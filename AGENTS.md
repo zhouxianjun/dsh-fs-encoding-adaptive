@@ -1,47 +1,59 @@
 # Repository Guidelines
 
-## Project Structure & Module Organization
+## Project Structure
 
-This package provides encoding-adaptive filesystem operations and search for DeepSeek Harness (`dsh`).
+This DeepSeek Harness (`dsh`) plugin provides encoding-adaptive filesystem operations and search. See `README.md` for behavior and configuration.
 
-- `src/index.ts`: plugin registration and configuration.
-- `src/encoding/`: detection, codecs, caching, and encoding overrides.
-- `src/fs/`: local and sandboxed filesystem providers, editing, and locks.
-- `src/search/`: encoding-aware grep integration.
-- `src/upstream/`: helpers synchronized with upstream implementations.
-- `test/`: encoding, filesystem, sandbox, and grep tests.
-- `locale/`, `icon.svg`, and `cordis.patch.yml`: translations and plugin assets.
-- `lib/`: generated JavaScript and declarations; edit source files instead.
+- `src/index.ts`: registration and configuration.
+- `src/encoding/`, `src/fs/`, `src/search/`: codecs/detection, filesystem providers, and grep integration.
+- `src/upstream/`: upstream-synchronized helpers; preserve provenance when updating.
+- `test/*.test.ts`: Vitest suites.
+- `locale/`, `icon.svg`, `cordis.patch.yml`: plugin assets.
+- `lib/`: generated JavaScript and declarations; change sources and rebuild.
 
-## Build, Test, and Development Commands
+## Development Commands
 
-Use a Node.js version supported by `package.json` and pnpm >=12.3.4.
+Use Node.js matching `package.json` engines and pnpm >=12.3.4.
 
 - `pnpm install`: install dependencies.
-- `pnpm build`: compile TypeScript into `lib/`.
-- `pnpm dev`: watch and recompile source changes; this does not launch dsh.
+- `pnpm build` / `pnpm dev`: compile / watch compilation; neither launches dsh.
 - `pnpm typecheck`: check source and test types.
-- `pnpm test`: run the Vitest suite.
-- `pnpm test:watch`: run tests interactively.
+- `pnpm test` / `pnpm test:watch`: run / watch Vitest.
 - `pnpm lint`: run Oxlint.
-- `pnpm fmt:check`: check formatting; `pnpm fmt` applies formatting.
+- `pnpm fmt:check` / `pnpm fmt`: check / apply Oxfmt formatting.
 
-## Coding Style & Naming Conventions
+## Design & Framework Boundaries
 
-Use strict TypeScript with ESM imports, two-space indentation, single quotes, and semicolons. Follow Oxfmt configuration. Use `.js` extensions in relative imports and `import type` for type-only dependencies. Use camelCase for functions and variables, PascalCase for classes and interfaces, and descriptive kebab-case filenames. Include braces around control-flow bodies.
+Trace responsibilities and callers before editing; fix root causes, synchronize affected contracts and documentation, and avoid speculative abstractions or compatibility layers. Preserve unrelated changes. Do not bump versions without a release request.
 
-## Testing Guidelines
+Read-only inspection of upstream documentation, source, types, tests, and Git history is allowed. Do not modify the upstream checkout or couple this package to its internal filesystem paths. Prefer public APIs/types and existing dependencies.
 
-Place Vitest tests in `test/**/*.test.ts`, using descriptive behavior-based test names. Run a focused suite with `pnpm exec vitest run test/encoding.test.ts`. Tests use the Node environment; no numeric coverage threshold is configured.
+Keep state scoped to its plugin/session. Release owned timers, watchers, and subprocesses through documented lifecycle hooks; avoid duplicating framework-managed cleanup.
 
-For encoding changes, verify exact output bytes, BOM and line-ending preservation, and rejection of lossy writes. Exercise sandbox boundaries and grep behavior when affected. Use temporary fixtures and clean up filesystem resources and plugin contexts.
+## Upstream Synchronization
 
-## Commit & Pull Request Guidelines
+This plugin extends upstream UTF-8 behavior. Periodically review upstream changes; during dependency upgrades or filesystem, sandbox, or search changes, inspect documentation, source, types, tests, and history as needed for the affected contracts. Compare against the dependency version actually used and distinguish newer upstream changes.
 
-Git history is unavailable in this checkout, so existing commit conventions cannot be verified. Use concise, imperative commit subjects.
+Compare upstream behavior with our overrides and `src/upstream/` helpers, including errors, version checks, atomic writes, platform handling, and lifecycle behavior. Adapt relevant fixes while retaining encoding guarantees. Keep necessary synchronized helpers isolated in `src/upstream/`; record their upstream package/version or commit, source path, and intentional deviations. Do not copy unrelated framework code.
 
-Pull requests should describe the problem, behavior changes, and validation commands/results. Link relevant issues and explain compatibility or configuration changes.
+Report the compared revisions, changes adopted or deferred with reasons, and targeted validation. Verify affected UTF-8 parity and legacy-encoding invariants; do not add tests merely to duplicate upstream coverage.
 
-## Architecture Guardrails
+## Coding Conventions
 
-Preserve native UTF-8 behavior and lossless legacy-encoding mutations. Keep sandbox enforcement and atomic-write protections intact. Review upstream-synchronized helpers carefully when updating dependencies.
+Use strict TypeScript, ESM, two-space indentation, single quotes, and semicolons. Use `.js` relative imports and `import type`. Prefer camelCase functions/variables, PascalCase types/classes, and kebab-case filenames. Use control-flow braces. Validate external inputs at boundaries; avoid redundant internal checks. Comments explain non-obvious constraints, not code history.
+
+## LLM-Facing Content
+
+For prompts, tool descriptions, injected context, and model-visible output, state desired behavior, valid inputs, conditions, and next steps positively. Preserve necessary prohibitions and exact API names/error codes. Describe failures truthfully with location and cause when known. Offer feasible corrections when known; otherwise state limitations or missing information. Never invent advice or present failure as success. Trace actual assembly and consumers when changing these contracts.
+
+## Safety & Testing
+
+Preserve native UTF-8 behavior, byte-exact legacy encoding round-trips, BOM/EOL preservation, sandbox confinement, and atomic-write/version protections.
+
+Add tests only for concrete regression risks or core invariants affected by the change. Assert observable behavior, especially byte preservation, lossy-write rejection, sandbox boundaries, and grep correctness where relevant. Do not duplicate tests of unchanged framework internals; test integration contracts and regression risks at our framework boundary when affected. Avoid trivial mappings, exact-prose assertions, private call sequences, excessive mocks, and redundant coverage. Clean up fixtures and plugin contexts. Test counts and coverage percentages are not completion criteria.
+
+Run focused tests, e.g. `pnpm exec vitest run test/encoding.test.ts`, plus checks appropriate to the change. Documentation-only changes need content and diff review. Report actual validation and unverified behavior separately.
+
+## Commits & Pull Requests
+
+Use concise imperative subjects. PRs describe the problem, resulting behavior, validation, and compatibility/configuration changes; link relevant issues. Review the complete task diff before delivery.
