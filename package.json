@@ -1,6 +1,6 @@
 {
   "name": "@12inch-glorysoft/dsh-fs-encoding-adaptive",
-  "version": "0.1.1-beta.0",
+  "version": "0.1.1-beta.1",
   "description": "Encoding-adaptive FileSystem backend for DeepSeek Harness (dsh): native UTF-8 / UTF-8 BOM passthrough with byte-exact round-trips for 16 non-UTF-8 encodings and encoding-aware grep.",
   "keywords": [
     "big5",

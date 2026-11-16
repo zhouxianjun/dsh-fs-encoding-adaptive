@@ -6,4 +6,4 @@
   disabled: true
 - insert:
     - id: fs-encoding-adaptive
-      name: dsh-fs-encoding-adaptive
+      name: '@12inch-glorysoft/dsh-fs-encoding-adaptive'
