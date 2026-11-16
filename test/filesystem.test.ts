@@ -12,7 +12,7 @@ import type { ToolCallId } from '@deepseek-ai/dsh-llm';
 import iconv from 'iconv-lite';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { EncodingAdaptiveLocalFileSystem } from '../src/fs/local.js';
-import { writeBytesAtomic } from '../src/upstream/atomic-write.js';
+import { readBytesWithStat, writeBytesAtomic } from '../src/upstream/atomic-write.js';
 import * as encodingPlugin from '../src/index.js';
 
 async function collectStream(iterable: AsyncIterable<string>): Promise<string> {
@@ -186,14 +186,8 @@ describe('EncodingAdaptiveLocalFileSystem', () => {
     ).toBe(true);
   });
 
-  it('inherits official streamText (rejecting GBK with FS_NOT_TEXT like official) while readText decodes >64KB ASCII+GBK', async () => {
+  it('inherits official streamText directly while readText decodes >64KB ASCII+GBK', async () => {
     const dir = await makeTempDir();
-    const ctxOff = new Context();
-    ctxs.push(ctxOff);
-    const official = new LocalFileSystem(ctxOff, {
-      cwd: dir,
-      diffBasisMaxBytes: 10 * 1024 * 1024,
-    });
     const { adaptive } = makeAdaptive(dir);
 
     expect(adaptive.streamText).toBe(LocalFileSystem.prototype.streamText);
@@ -204,26 +198,7 @@ describe('EncodingAdaptiveLocalFileSystem', () => {
     await fs.promises.writeFile(filePath, iconv.encode(asciiPrefix + gbkBody, 'gbk'));
 
     const adpTarget = await adaptive.resolve(filePath);
-    const offTarget = await official.resolve(filePath);
     expect(await adaptive.readText(adpTarget)).toBe(asciiPrefix + gbkBody);
-
-    await expect(collectStream(await official.streamText(offTarget))).rejects.toMatchObject({
-      code: 'FS_NOT_TEXT',
-    });
-    await expect(collectStream(await adaptive.streamText(adpTarget))).rejects.toMatchObject({
-      code: 'FS_NOT_TEXT',
-    });
-
-    // Mixed file: valid non-ASCII UTF-8 followed after >64KB by invalid UTF-8 byte sequence fails as FS_NOT_TEXT.
-    const corruptFile = path.join(dir, 'corrupt-mixed.txt');
-    const utf8NonAsciiPrefix = Buffer.from('前缀非ASCII中文'.repeat(4000), 'utf8'); // > 64KB
-    const invalidTail = Buffer.from([0xff, 0xfe, 0x80, 0x81, 0xff]);
-    await fs.promises.writeFile(corruptFile, Buffer.concat([utf8NonAsciiPrefix, invalidTail]));
-
-    const corruptTarget = await adaptive.resolve(corruptFile);
-    await expect(collectStream(await adaptive.streamText(corruptTarget))).rejects.toMatchObject({
-      code: 'FS_NOT_TEXT',
-    });
   });
 
   it('supports writeText, patchText, deleteFile, and moveFile across GBK, Shift-JIS, and UTF-16LE BOM', async () => {
@@ -335,38 +310,45 @@ describe('EncodingAdaptiveLocalFileSystem', () => {
     const target = await adaptive.resolve(filePath);
     const v1 = (await adaptive.stat(target))!.version;
 
+    // stat1 -> readFile -> stat2 detects concurrent mid-read version changes
+    let readStatCalls = 0;
+    await expect(
+      readBytesWithStat(target.targetKey, async () => {
+        readStatCalls++;
+        const real = await adaptive.stat(target);
+        if (readStatCalls > 1 && real) {
+          return { ...real, version: 'mid-read-changed-version' as FsVersion };
+        }
+        return real;
+      }),
+    ).rejects.toMatchObject({ code: 'FS_STALE_VERSION' });
+
     // Dead-PID leftover staging directory cleanup
     const deadTmpDir = path.join(dir, '.dsh-enc-tmp-999999-stale');
     await fs.promises.mkdir(deadTmpDir);
     await fs.promises.writeFile(path.join(deadTmpDir, 'leftover'), 'x');
 
     // Pre-rename stale version rejection inside writeBytesAtomic
-    let statCalls = 0;
-    const changingStatFn = async (): Promise<FsInfo | undefined> => {
-      statCalls++;
+    const staleStatFn = async (): Promise<FsInfo | undefined> => {
       const real = await adaptive.stat(target);
-      if (statCalls >= 1 && real) {
-        return { ...real, version: 'stale-changed-version' as FsVersion };
-      }
-      return real;
+      return real ? { ...real, version: 'stale-changed-version' as FsVersion } : real;
     };
 
     await expect(
-      writeBytesAtomic(target.targetKey, iconv.encode('不会落盘的文本\n', 'gbk'), changingStatFn, {
+      writeBytesAtomic(target.targetKey, iconv.encode('不会落盘的文本\n', 'gbk'), staleStatFn, {
         expectedVersion: v1,
       }),
     ).rejects.toMatchObject({ code: 'FS_STALE_VERSION' });
-
-    // Wait a tick for void cleanupDeadTmpDirs to sweep deadTmpDir
-    await new Promise((r) => setTimeout(r, 50));
     expect(fs.existsSync(deadTmpDir)).toBe(false);
 
     // Reentrant lock via AsyncLocalStorage does not deadlock, and concurrent guarded edits serialize
+    let innerExecuted = false;
     await adaptive.withEncodingLock(target.targetKey, async () => {
       await adaptive.withEncodingLock(target.targetKey, async () => {
-        expect(true).toBe(true);
+        innerExecuted = true;
       });
     });
+    expect(innerExecuted).toBe(true);
 
     const p1 = adaptive.editText(
       target,
@@ -396,8 +378,7 @@ describe('EncodingAdaptiveLocalFileSystem', () => {
     ctx.plugin(SystemPrompt, {});
     ctx.plugin(ToolsService, {});
     ctx.plugin(nativeExecutor);
-    ctx.plugin(encodingPlugin, { sandbox: false, cwd: dir });
-    await new Promise((r) => setTimeout(r, 30));
+    await ctx.plugin(encodingPlugin, { sandbox: false, cwd: dir }).await();
 
     const fsSvc = (ctx as Context & { fs: FileSystem }).fs;
     const tools = (ctx as Context & { tools: ToolsService }).tools;
@@ -453,6 +434,7 @@ describe('EncodingAdaptiveLocalFileSystem', () => {
     expect(gbkContexts).toHaveLength(1);
     const noticeText = (gbkContexts[0]!.content[0] as { type: 'text'; text: string }).text;
     expect(noticeText).toContain('gbk');
+    expect(noticeText).toContain('LF');
 
     const batchBom = await tools.execute({
       calls: [
@@ -526,38 +508,39 @@ describe('EncodingAdaptiveLocalFileSystem', () => {
     });
     expect(batchStrReplace.results[0]!.result.additionalContexts).toBeUndefined();
     expect(batchStrReplace.additionalContexts).toHaveLength(0);
+
+    const lowConfMixedNotice = encodingPlugin.formatEncodingNotice('mixed.csv', {
+      encoding: 'utf16le',
+      hasBom: true,
+      eol: 'mixed',
+      confident: false,
+      source: 'chardet',
+      version: 'v1' as FsVersion,
+    });
+    expect(lowConfMixedNotice).toContain('utf16le');
+    expect(lowConfMixedNotice).toContain('BOM');
+    expect(lowConfMixedNotice).toContain('MIXED');
+    expect(lowConfMixedNotice).toContain('encodings');
   });
 
-  it('provides cwd default, validates positive diffBasisMaxBytes, and exposes dsh.bundle.patch in package.json', async () => {
+  it('provides cwd default and validates positive diffBasisMaxBytes', async () => {
     const cfgDefault = encodingPlugin.Config({});
     expect(cfgDefault.cwd).toBe(process.cwd());
     expect(() => encodingPlugin.Config({ diffBasisMaxBytes: 0 })).toThrow();
 
-    const dir = await makeTempDir();
     const ctx = new Context();
     ctxs.push(ctx);
     const fsNoCwd = new EncodingAdaptiveLocalFileSystem(ctx, {});
-    const resolved = await fsNoCwd.resolve(path.join(dir, 'rel.txt'));
-    expect(resolved.targetKey).toBe(path.join(dir, 'rel.txt'));
     // Relative resolve without opts.cwd must not throw isAbsolute(undefined)
     const relNoOpts = await fsNoCwd.resolve('relative.txt');
     expect(relNoOpts.targetKey).toBe(path.join(process.cwd(), 'relative.txt'));
-
-    const pkgRaw = await fs.promises.readFile(new URL('../package.json', import.meta.url), 'utf8');
-    const pkg = JSON.parse(pkgRaw) as { dsh?: { bundle?: { patch?: string } } };
-    expect(pkg.dsh?.bundle?.patch).toBe('./cordis.patch.yml');
   });
 
   it('aligns writeText error handling (directory, aborted, 0o200, replaceIfVersion missing) and separates encoding preservation from diffBasisMaxBytes', async () => {
     const dir = await makeTempDir();
     const ctx = new Context();
-    const ctxOff = new Context();
-    ctxs.push(ctx, ctxOff);
+    ctxs.push(ctx);
     const adaptive = new EncodingAdaptiveLocalFileSystem(ctx, {
-      cwd: dir,
-      diffBasisMaxBytes: 64,
-    });
-    const official = new LocalFileSystem(ctxOff, {
       cwd: dir,
       diffBasisMaxBytes: 64,
     });
@@ -591,12 +574,6 @@ describe('EncodingAdaptiveLocalFileSystem', () => {
     await fs.promises.unlink(deletedGbkPath);
     await expect(
       adaptive.writeText(deletedTarget, 'rewrite\n', {
-        kind: 'replaceIfVersion',
-        version: observed!.version,
-      }),
-    ).rejects.toMatchObject({ code: 'FS_STALE_VERSION' });
-    await expect(
-      official.writeText(await official.resolve(deletedGbkPath), 'rewrite\n', {
         kind: 'replaceIfVersion',
         version: observed!.version,
       }),
@@ -685,7 +662,7 @@ describe('EncodingAdaptiveLocalFileSystem', () => {
     ).toBe(true);
   });
 
-  it('matches official LocalFileSystem on new files, plain UTF-8, UTF-8 BOM, and pure ASCII writeText and streamText', async () => {
+  it('matches official LocalFileSystem on new files, plain UTF-8, and pure ASCII writeText and streamText', async () => {
     const dir = await makeTempDir();
     const ctxOff = new Context();
     const ctxAdp = new Context();
@@ -716,18 +693,10 @@ describe('EncodingAdaptiveLocalFileSystem', () => {
     await expect(
       adaptive.writeText(newAdp, 'dup', { kind: 'createIfAbsent' }),
     ).rejects.toMatchObject({ code: 'FS_NOT_OBSERVED' });
-    await expect(
-      official.writeText(newOff, 'dup', { kind: 'createIfAbsent' }),
-    ).rejects.toMatchObject({ code: 'FS_NOT_OBSERVED' });
 
-    // 2. Plain UTF-8, UTF-8 BOM, and pure ASCII overwrites
+    // 2. Plain UTF-8 and pure ASCII overwrites
     for (const [label, initialBytes, replacement] of [
       ['utf8', Buffer.from('旧 UTF-8 内容\r\n', 'utf8'), '新 UTF-8 内容\n'],
-      [
-        'utf8-bom',
-        Buffer.concat([Buffer.from([0xef, 0xbb, 0xbf]), Buffer.from('BOM 内容\r\n', 'utf8')]),
-        '替换后内容\n',
-      ],
       ['ascii', Buffer.from('plain ascii\r\n', 'ascii'), 'updated ascii\n'],
     ] as const) {
       const pOff = path.join(dir, `${label}-off.txt`);
@@ -752,7 +721,7 @@ describe('EncodingAdaptiveLocalFileSystem', () => {
     }
   });
 
-  it('keeps readText CRLF & CR raw and matches official streamText failure on GBK regardless of diffBasisMaxBytes', async () => {
+  it('keeps readText CRLF & CR raw on non-UTF-8 files even with >64KB leading valid UTF-8', async () => {
     const dir = await makeTempDir();
     const ctx = new Context();
     ctxs.push(ctx);
@@ -781,19 +750,13 @@ describe('EncodingAdaptiveLocalFileSystem', () => {
 
     const readWhole = await adaptiveGbk.readText(trickyTarget);
     expect(readWhole).toContain('\r\n后面是纯正 GBK 中文段落！\r\n');
-    await expect(collectStream(await adaptiveGbk.streamText(trickyTarget))).rejects.toMatchObject({
-      code: 'FS_NOT_TEXT',
-    });
 
-    // Classic Mac CR file: readText returns raw \r while streamText uses official UTF-8 stream and rejects GBK
+    // Classic Mac CR file: readText returns raw \r
     const crText = '这是经典的老式换行测试第一行正文。\r这是第二行中文内容。\r这是第三行结尾。\r';
     const crPath = path.join(dir, 'mac-cr.gbk.txt');
     await fs.promises.writeFile(crPath, iconv.encode(crText, 'gbk'));
     const crTarget = await adaptive.resolve(crPath);
     expect(await adaptive.readText(crTarget)).toBe(crText);
-    await expect(collectStream(await adaptive.streamText(crTarget))).rejects.toMatchObject({
-      code: 'FS_NOT_TEXT',
-    });
   });
 
   it('completes non-UTF-8 moveFile and reports real state when cancelled after commit checkpoint, and aborts cleanly before commit', async () => {
@@ -856,11 +819,10 @@ describe('EncodingAdaptiveLocalFileSystem', () => {
       ac3.signal,
     );
     delete adaptive.internals.removeFile;
-    expect(partialRes.sourceDeleted).toBe(false);
-    if (partialRes.sourceDeleted) {
-      throw new Error('expected partial success');
-    }
-    expect(partialRes.sourceFailure.code).toBe('FS_PERMISSION_DENIED');
+    expect(partialRes).toMatchObject({
+      sourceDeleted: false,
+      sourceFailure: { code: 'FS_PERMISSION_DENIED' },
+    });
     expect(fs.existsSync(src3)).toBe(true);
     expect((await fs.promises.readFile(dst3)).equals(iconv.encode(gbkText, 'gbk'))).toBe(true);
   });

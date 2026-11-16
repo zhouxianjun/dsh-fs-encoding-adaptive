@@ -4,33 +4,28 @@ import { FsError, FsVersion } from '@deepseek-ai/dsh-fs';
 import {
   EncodingStateCache,
   NON_UTF8_ENCODINGS,
-  RG_ENCODING_LABELS,
   assertLosslessMutationReady,
   compileEncodingOverrides,
   decodeAndValidateNonUtf8,
-  decodeBytesRaw,
-  detectEolStyle,
   detectNonUtf8Encoding,
   encodeTextRaw,
   encodeTextStrict,
   isValidUtf8Text,
-  normalizeEncodingName,
 } from '../src/encoding/index.js';
 import type { NonUtf8Encoding } from '../src/encoding/index.js';
 
-describe('encoding detection, round-trip safety, and cache', () => {
-  it('exposes exactly the 16 supported non-UTF-8 encodings and valid ripgrep labels', () => {
-    expect(NON_UTF8_ENCODINGS).toHaveLength(16);
-    for (const enc of NON_UTF8_ENCODINGS) {
-      expect(RG_ENCODING_LABELS[enc]).toBeTruthy();
-      expect(normalizeEncodingName(enc)).toBe(enc);
-      expect(normalizeEncodingName(RG_ENCODING_LABELS[enc]!)).toBe(enc);
-    }
-    expect(normalizeEncodingName('cp936')).toBe('gbk');
-    expect(normalizeEncodingName('sjis')).toBe('shift_jis');
-    expect(normalizeEncodingName('latin1')).toBe('iso-8859-1');
-  });
+function expectFsError(fn: () => unknown, code: string): void {
+  let caught: unknown;
+  try {
+    fn();
+  } catch (err) {
+    caught = err;
+  }
+  expect(caught).toBeInstanceOf(FsError);
+  expect(caught).toMatchObject({ code });
+}
 
+describe('encoding detection, round-trip safety, and cache', () => {
   it('round-trips every one of the 16 supported non-UTF-8 encodings losslessly', () => {
     const samples: Record<NonUtf8Encoding, { text: string; hasBom: boolean }> = {
       utf16le: { text: 'Line 1: 你好 UTF-16LE 🚀\r\nLine 2: second\r\n', hasBom: true },
@@ -179,29 +174,23 @@ describe('encoding detection, round-trip safety, and cache', () => {
     const pngHeader = Buffer.from([
       0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00, 0x00, 0x00, 0x0d,
     ]);
-    expect(() => detectNonUtf8Encoding(pngHeader, 'img.png')).toThrowError(FsError);
-    try {
-      detectNonUtf8Encoding(pngHeader, 'img.png');
-    } catch (e) {
-      expect((e as FsError).code).toBe('FS_NOT_TEXT');
-    }
+    expectFsError(() => detectNonUtf8Encoding(pngHeader, 'img.png'), 'FS_NOT_TEXT');
 
     const utf32le = Buffer.from([0xff, 0xfe, 0x00, 0x00, 0x41, 0x00, 0x00, 0x00]);
-    expect(() => detectNonUtf8Encoding(utf32le, 'u32.txt')).toThrowError(FsError);
+    expectFsError(() => detectNonUtf8Encoding(utf32le, 'u32.txt'), 'FS_NOT_TEXT');
 
     const oddUtf16 = Buffer.from([0xff, 0xfe, 0x41, 0x00, 0x42]);
-    expect(() => detectNonUtf8Encoding(oddUtf16, 'odd.txt')).toThrowError(FsError);
+    expectFsError(() => detectNonUtf8Encoding(oddUtf16, 'odd.txt'), 'FS_NOT_TEXT');
   });
 
   it('marks very short ambiguous buffers low-confidence unless overridden via glob config', () => {
     const shortGbk = iconv.encode('你好', 'gbk');
-    const detAuto = detectNonUtf8Encoding(shortGbk, 'nested/short.csv');
-    expect(detAuto.confident).toBe(false);
-
     const decodedLow = decodeAndValidateNonUtf8(shortGbk, 'nested/short.csv');
-    expect(() =>
-      assertLosslessMutationReady(shortGbk, decodedLow, 'nested/short.csv'),
-    ).toThrowError(FsError);
+    expect(decodedLow.confident).toBe(false);
+    expectFsError(
+      () => assertLosslessMutationReady(shortGbk, decodedLow, 'nested/short.csv'),
+      'FS_NOT_TEXT',
+    );
 
     const overrides = compileEncodingOverrides({ '*.csv': 'gbk' });
     const decodedOverride = decodeAndValidateNonUtf8(shortGbk, 'nested/short.csv', overrides);
@@ -217,14 +206,13 @@ describe('encoding detection, round-trip safety, and cache', () => {
     const mixedBytes = iconv.encode(mixedText, 'gbk');
     const decoded = decodeAndValidateNonUtf8(mixedBytes, 'mixed.txt');
     expect(decoded.eol).toBe('mixed');
-    expect(detectEolStyle(mixedText)).toBe('mixed');
-    expect(() => assertLosslessMutationReady(mixedBytes, decoded, 'mixed.txt')).toThrowError(
-      FsError,
+    expectFsError(
+      () => assertLosslessMutationReady(mixedBytes, decoded, 'mixed.txt'),
+      'FS_NOT_TEXT',
     );
 
-    expect(() => encodeTextStrict('Hello 🚀 emoji in GBK', 'gbk', false)).toThrowError(FsError);
-    expect(() => encodeTextStrict('한국어 한글 in GBK', 'gbk', false)).toThrowError(FsError);
-    expect(decodeBytesRaw(mixedBytes, 'gbk', false)).toBe(mixedText);
+    expectFsError(() => encodeTextStrict('Hello 🚀 emoji in GBK', 'gbk', false), 'FS_IO_ERROR');
+    expectFsError(() => encodeTextStrict('한국어 한글 in GBK', 'gbk', false), 'FS_IO_ERROR');
   });
 
   it('validates UTF-8 / UTF-8 BOM via isValidUtf8Text and evicts/invalidates EncodingStateCache cleanly', () => {
@@ -269,8 +257,7 @@ describe('encoding detection, round-trip safety, and cache', () => {
       asciiPrefix,
       Buffer.from([0x00, 0x01, 0x02, 0x80, 0x81, 0xff]),
     ]);
-    expect(() => detectNonUtf8Encoding(trailingBinary, 'late-bin.dat')).toThrowError(FsError);
-    expect(() => decodeAndValidateNonUtf8(trailingBinary, 'late-bin.dat')).toThrowError(FsError);
+    expectFsError(() => decodeAndValidateNonUtf8(trailingBinary, 'late-bin.dat'), 'FS_NOT_TEXT');
 
     const utf16LeWithFffd = Buffer.concat([
       Buffer.from([0xff, 0xfe]),

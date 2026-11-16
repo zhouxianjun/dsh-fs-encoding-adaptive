@@ -14,12 +14,22 @@ declare module '@deepseek-ai/dsh-llm' {
   }
 }
 
+/**
+ * Formats the post-read encoding notice injected for non-UTF-8 files.
+ */
 export function formatEncodingNotice(filePath: string, rec: EncodingRecord): string {
   const bomNote = rec.hasBom ? ', BOM' : '';
-  const confidenceNote = rec.confident
+  const confidenceGate = rec.confident
     ? ''
-    : ` [low confidence — configure encodings override for ${filePath} if misdetected before editing]`;
-  return `File "${filePath}" was decoded from ${rec.encoding}${bomNote} (ripgrep label: ${RG_ENCODING_LABELS[rec.encoding]}, EOL: ${rec.eol.toUpperCase()}, source: ${rec.source})${confidenceNote}. Edits will preserve its original bytes and line endings.`;
+    : ` [low confidence — mutations are refused until an encodings override is configured for "${filePath}"]`;
+  const header = `File "${filePath}" was decoded from ${rec.encoding}${bomNote} (ripgrep label: ${RG_ENCODING_LABELS[rec.encoding]}, EOL: ${rec.eol.toUpperCase()}, source: ${rec.source})${confidenceGate}.`;
+
+  const eolRule =
+    rec.eol === 'mixed'
+      ? `${rec.confident ? 'Targeted edits' : 'Once configured, targeted edits still'} refuse mixed line endings; full-file overwrites preserve ${rec.hasBom ? 'its original encoding and BOM' : 'its original encoding'} (using the written line endings)`
+      : `${rec.confident ? 'Edits and overwrites' : 'Once configured, edits and overwrites'} (including full-file writes) preserve ${rec.hasBom ? 'its original encoding, BOM, and line endings' : 'its original encoding and line endings'}`;
+
+  return `${header} ${eolRule}, with strict lossless round-trip verification (rejecting unmappable characters without modifying the file).`;
 }
 
 async function resolveReadTarget(ctx: Context, filePath: string, agent: unknown) {

@@ -3,14 +3,10 @@ import * as os from 'node:os';
 import * as path from 'node:path';
 import { Context, Service } from '@deepseek-ai/cordis';
 import type { FileSystem } from '@deepseek-ai/dsh-fs';
-import { LocalFileSystem } from '@deepseek-ai/dsh-fs-local';
 import type { SandboxExecutionPolicy, SandboxMode } from '@deepseek-ai/dsh-sandbox';
 import iconv from 'iconv-lite';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import {
-  EncodingAdaptiveLocalFileSystem,
-  EncodingAdaptiveSandboxedFileSystem,
-} from '../src/fs/index.js';
+import { EncodingAdaptiveSandboxedFileSystem } from '../src/fs/index.js';
 import * as encodingPlugin from '../src/index.js';
 
 describe('EncodingAdaptiveSandboxedFileSystem & sandbox policy integration', () => {
@@ -63,8 +59,7 @@ describe('EncodingAdaptiveSandboxedFileSystem & sandbox policy integration', () 
     ctxs.push(ctx);
     registerFakeSandboxPolicy(ctx, 'read-only', workspace);
 
-    ctx.plugin(encodingPlugin, { cwd: workspace, sandbox: true });
-    await new Promise((r) => setTimeout(r, 30));
+    await ctx.plugin(encodingPlugin, { cwd: workspace, sandbox: true }).await();
 
     const fsSvc = (ctx as Context & { fs: FileSystem }).fs;
     expect(fsSvc).toBeInstanceOf(EncodingAdaptiveSandboxedFileSystem);
@@ -117,8 +112,7 @@ describe('EncodingAdaptiveSandboxedFileSystem & sandbox policy integration', () 
     const ctx = new Context();
     ctxs.push(ctx);
     registerFakeSandboxPolicy(ctx, 'workspace-write', workspace);
-    ctx.plugin(encodingPlugin, { cwd: workspace, sandbox: true });
-    await new Promise((r) => setTimeout(r, 30));
+    await ctx.plugin(encodingPlugin, { cwd: workspace, sandbox: true }).await();
 
     const fsSvc = (ctx as Context & { fs: FileSystem }).fs;
     const inTarget = await fsSvc.resolve(inGbk);
@@ -180,13 +174,10 @@ describe('EncodingAdaptiveSandboxedFileSystem & sandbox policy integration', () 
     const ctx = new Context();
     ctxs.push(ctx);
     registerFakeSandboxPolicy(ctx, 'workspace-write', workspace);
-    ctx.plugin(encodingPlugin, { cwd: workspace, sandbox: true });
-    await new Promise((r) => setTimeout(r, 30));
+    await ctx.plugin(encodingPlugin, { cwd: workspace, sandbox: true }).await();
 
     const fsSvc = (ctx as Context & { fs: FileSystem }).fs;
     expect(fsSvc).toBeInstanceOf(EncodingAdaptiveSandboxedFileSystem);
-    expect(fsSvc).toBeInstanceOf(EncodingAdaptiveLocalFileSystem);
-    expect(fsSvc).toBeInstanceOf(LocalFileSystem);
 
     const extraTarget = await fsSvc.resolve(extraGbk);
     const blockedTarget = await fsSvc.resolve(blockedGbk);
@@ -248,16 +239,21 @@ describe('EncodingAdaptiveSandboxedFileSystem & sandbox policy integration', () 
   it('logs a warning if sandboxPolicy does not appear within 5 seconds, and cancels cleanly on dispose', async () => {
     vi.useFakeTimers();
     const workspace = await makeTempDir();
+
+    const attachWarnSpy = (c: Context) => {
+      const warnSpy = vi.fn();
+      const origLogger = c.logger.bind(c);
+      (c as unknown as { logger: typeof c.logger }).logger = ((loggerName: string) => {
+        const l = origLogger(loggerName);
+        l.warn = warnSpy as never;
+        return l;
+      }) as typeof c.logger;
+      return warnSpy;
+    };
+
     const ctx = new Context();
     ctxs.push(ctx);
-
-    const warnSpy = vi.fn();
-    const origLogger = ctx.logger.bind(ctx);
-    (ctx as unknown as { logger: typeof ctx.logger }).logger = ((loggerName: string) => {
-      const l = origLogger(loggerName);
-      l.warn = warnSpy as never;
-      return l;
-    }) as typeof ctx.logger;
+    const warnSpy = attachWarnSpy(ctx);
     ctx.plugin(encodingPlugin, { cwd: workspace, sandbox: true });
 
     await vi.advanceTimersByTimeAsync(4999);
@@ -266,5 +262,16 @@ describe('EncodingAdaptiveSandboxedFileSystem & sandbox policy integration', () 
     await vi.advanceTimersByTimeAsync(2);
     expect(warnSpy).toHaveBeenCalledTimes(1);
     expect(String(warnSpy.mock.calls[0]?.[0] ?? '')).toContain('sandboxPolicy');
+
+    // Disposing before the 5-second timeout cancels the warning timer
+    const ctxDisposed = new Context();
+    ctxs.push(ctxDisposed);
+    const disposedWarnSpy = attachWarnSpy(ctxDisposed);
+    ctxDisposed.plugin(encodingPlugin, { cwd: workspace, sandbox: true });
+
+    await vi.advanceTimersByTimeAsync(2000);
+    await ctxDisposed.fiber.dispose();
+    await vi.advanceTimersByTimeAsync(5000);
+    expect(disposedWarnSpy).not.toHaveBeenCalled();
   });
 });

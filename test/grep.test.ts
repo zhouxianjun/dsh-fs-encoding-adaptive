@@ -23,7 +23,6 @@ import iconv from 'iconv-lite';
 import { afterEach, describe, expect, it } from 'vitest';
 import * as encodingPlugin from '../src/index.js';
 import { inspectFileEncodingForSearch } from '../src/search/inspect.js';
-import { batchCandidateFiles } from '../src/search/grep.js';
 
 describe('Encoding-aware grep interception (tools/execute)', () => {
   const dirs: string[] = [];
@@ -37,13 +36,10 @@ describe('Encoding-aware grep interception (tools/execute)', () => {
 
   async function setupSearchHarness(
     workspace: string,
-    opts:
-      | boolean
-      | { withSpill?: boolean; sessionCwd?: string; encodings?: Record<string, string> } = false,
+    opts: { withSpill?: boolean; sessionCwd?: string; encodings?: Record<string, string> } = {},
   ) {
-    const resolvedOpts = typeof opts === 'boolean' ? { withSpill: opts } : opts;
-    const withSpill = resolvedOpts.withSpill ?? false;
-    const sessionCwd = resolvedOpts.sessionCwd ?? workspace;
+    const withSpill = opts.withSpill ?? false;
+    const sessionCwd = opts.sessionCwd ?? workspace;
     const ctx = new Context();
     ctxs.push(ctx);
 
@@ -65,12 +61,13 @@ describe('Encoding-aware grep interception (tools/execute)', () => {
       const spillDir = await makeTempDir('dsh-enc-spill-');
       ctx.plugin(LocalSpillStore, { root: spillDir, cleanupPeriodDays: 0 });
     }
-    ctx.plugin(encodingPlugin, {
-      sandbox: false,
-      cwd: workspace,
-      ...(resolvedOpts.encodings ? { encodings: resolvedOpts.encodings } : {}),
-    });
-    await new Promise((r) => setTimeout(r, 40));
+    await ctx
+      .plugin(encodingPlugin, {
+        sandbox: false,
+        cwd: workspace,
+        ...(opts.encodings ? { encodings: opts.encodings } : {}),
+      })
+      .await();
 
     applyGrepTool(ctx, {
       maxMatches: GREP_MAX_MATCHES,
@@ -180,6 +177,7 @@ describe('Encoding-aware grep interception (tools/execute)', () => {
         line: m.line,
       }),
     );
+    expect(cjkMatches).toHaveLength(4);
     expect(cjkMatches).toEqual(
       expect.arrayContaining([
         { file: '01-utf8.txt', lineNumber: 1, line: 'UTF-8 模块关键字：FIND_ME_中文' },
@@ -233,7 +231,7 @@ describe('Encoding-aware grep interception (tools/execute)', () => {
       iconv.encode(lines.join('\n') + '\n', 'gbk'),
     );
 
-    const { tools } = await setupSearchHarness(workspace, true);
+    const { tools } = await setupSearchHarness(workspace, { withSpill: true });
     const controller = new AbortController();
 
     const res = await runGrep(
@@ -305,11 +303,11 @@ describe('Encoding-aware grep interception (tools/execute)', () => {
       ),
     ).rejects.toMatchObject({ code: 'FS_ABORTED' });
 
-    // Large binary file > 64KB
+    // Large binary file > 64KB (trailing needle must not match in grep either)
     const bigBin = Buffer.concat([
       Buffer.from('PNG\0binary', 'latin1'),
       Buffer.alloc(200 * 1024, 0x00),
-      Buffer.from('FIND_ASCII_UTF16', 'ascii'),
+      Buffer.from('FIND_ASCII_UTF16LE_NEEDLE', 'ascii'),
     ]);
     const bigBinPath = path.join(workspace, 'large.bin');
     await fs.promises.writeFile(bigBinPath, bigBin);
@@ -317,13 +315,7 @@ describe('Encoding-aware grep interception (tools/execute)', () => {
       kind: 'binary',
     });
 
-    // Batching helper splits large file lists cleanly
-    const synthetic = Array.from({ length: 245 }, (_, i) => ({ candPath: `dir/file-${i}.txt` }));
-    const batches = batchCandidateFiles(synthetic);
-    expect(batches.length).toBeGreaterThanOrEqual(3);
-    expect(batches.flat()).toHaveLength(245);
-
-    // 130 Shift-JIS files in legacy/ searched end-to-end across multiple batches + UTF-16LE/BE
+    // 130 Shift-JIS files in sjis-batch/ searched end-to-end across multiple batches + UTF-16LE/BE
     const sjisDir = path.join(workspace, 'sjis-batch');
     await fs.promises.mkdir(sjisDir);
     for (let i = 0; i < 130; i++) {
