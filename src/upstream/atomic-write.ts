@@ -1,6 +1,6 @@
 /**
  * Atomic raw-byte publication and stat-paired byte reads modeled after
- * `@deepseek-ai/dsh-fs-local@0.2.2-rc.2` (`src/fsio.ts`).
+ * `@deepseek-ai/dsh-fs-local@0.2.2-rc.3` (`src/fsio.ts`).
  *
  * Unlike `fsio.ts`, version tokens (`FsVersion`) are never synthesized locally:
  * every `statFn` callback delegates to `FileSystem.stat(target)`, ensuring 100%
@@ -10,7 +10,7 @@
 import * as crypto from 'node:crypto';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
-import { FsError } from '@deepseek-ai/dsh-fs';
+import { FsError, fsErrorFromErrno } from '@deepseek-ai/dsh-fs';
 import type { FsInfo, FsVersion } from '@deepseek-ai/dsh-fs';
 import { copyFileDaclWin32, replaceFileWin32 } from './win32.js';
 
@@ -53,34 +53,6 @@ function errorMessage(error: unknown): string {
 function throwIfAborted(signal: AbortSignal | undefined, verb: string): void {
   if (signal?.aborted) {
     throw new FsError(`${verb} aborted`, 'FS_ABORTED');
-  }
-}
-
-/**
- * Local fallback for `@deepseek-ai/dsh-fs` `fsErrorFromErrno` (added in
- * `0.2.2-rc.2`) so the plugin remains compatible with `0.2.2-rc.1` hosts.
- */
-export function fsErrorFromErrno(operation: string, displayPath: string, error: unknown): unknown {
-  if (
-    error instanceof FsError ||
-    !(error instanceof Error) ||
-    !('code' in error) ||
-    typeof error.code !== 'string'
-  ) {
-    return error;
-  }
-  const failure = `cannot ${operation} "${displayPath}"`;
-  switch (error.code) {
-    case 'ENOENT':
-    case 'ENOTDIR':
-      return new FsError(`${failure}: not found`, 'FS_NOT_FOUND', { cause: error });
-    case 'EACCES':
-    case 'EPERM':
-      return new FsError(`${failure}: permission denied`, 'FS_PERMISSION_DENIED', { cause: error });
-    case 'EISDIR':
-      return new FsError(`${failure}: not a regular file`, 'FS_NOT_REGULAR_FILE', { cause: error });
-    default:
-      return new FsError(`${failure}: ${error.message}`, 'FS_IO_ERROR', { cause: error });
   }
 }
 

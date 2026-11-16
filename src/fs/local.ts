@@ -1,6 +1,6 @@
 import * as fs from 'node:fs';
 import type { Context } from '@deepseek-ai/cordis';
-import { FsError } from '@deepseek-ai/dsh-fs';
+import { FsError, fsErrorFromErrno } from '@deepseek-ai/dsh-fs';
 import type {
   FsDeleteOutcome,
   FsEditOutcome,
@@ -28,7 +28,6 @@ import {
 } from '../encoding/index.js';
 import type { CompiledEncodingOverride, DecodedText } from '../encoding/index.js';
 import {
-  fsErrorFromErrno,
   readBoundedBytesIfSmall,
   readBytesWithStat,
   writeBytesAtomic,

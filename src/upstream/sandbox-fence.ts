@@ -1,6 +1,6 @@
 /**
  * Sandbox path-containment and target-fencing helpers synced from
- * `@deepseek-ai/dsh-fs-sandbox@0.2.2-rc.1` (`src/containment.ts` + `checkedTarget`).
+ * `@deepseek-ai/dsh-fs-sandbox@0.2.2-rc.3` (`src/containment.ts` + `checkedTarget`).
  *
  * Kept verbatim in structure so upstream updates to `@deepseek-ai/dsh-fs-sandbox`
  * can be diffed and merged directly without touching encoding logic.
@@ -10,7 +10,7 @@
 
 import { stat } from 'node:fs/promises';
 import { dirname, sep } from 'node:path';
-import { FsError } from '@deepseek-ai/dsh-fs';
+import { FsError, fsErrorFromErrno } from '@deepseek-ai/dsh-fs';
 import type { FileSystem, FsTarget } from '@deepseek-ai/dsh-fs';
 import { writableRoots } from '@deepseek-ai/dsh-sandbox';
 import type { SandboxExecutionPolicy } from '@deepseek-ai/dsh-sandbox';
@@ -43,7 +43,7 @@ async function statIfPresent(targetPath: string) {
     if (isMissing(error)) {
       return undefined;
     }
-    throw error;
+    throw fsErrorFromErrno('stat', targetPath, error);
   }
 }
 
