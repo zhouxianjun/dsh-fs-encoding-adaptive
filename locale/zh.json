@@ -1,0 +1,11 @@
+{
+  "description": "自适应多编码文件系统后端：UTF-8（含 UTF-8 BOM）100% 直通官方原生逻辑，同时支持 16 种传统非 UTF-8 编码（GBK、GB18030、Big5、Shift-JIS、EUC-KR、UTF-16、Windows-1250~1257、ISO-8859-1）的无损读写编辑与 grep 检索。",
+  "config": {
+    "sandbox": {
+      "description": "使用 sandboxPolicy（SandboxedFileSystem）约束写入权限。仅在无沙箱策略的环境中关闭。"
+    },
+    "encodings": {
+      "description": "按路径 glob 覆盖探测编码的映射规则（例如 {\"*.csv\": \"gbk\", \"legacy/**\": \"shift_jis\"}）。"
+    }
+  }
+}

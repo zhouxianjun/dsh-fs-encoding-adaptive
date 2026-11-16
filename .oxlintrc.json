@@ -1,0 +1,9 @@
+{
+  "$schema": "./node_modules/oxlint/configuration_schema.json",
+  "plugins": ["typescript"],
+  "rules": {
+    "typescript/consistent-type-imports": "error",
+    "eslint/no-unused-vars": "warn",
+    "eslint/curly": "error"
+  }
+}

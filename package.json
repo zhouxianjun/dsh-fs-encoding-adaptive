@@ -1,0 +1,102 @@
+{
+  "name": "dsh-fs-encoding-adaptive",
+  "version": "0.1.0",
+  "description": "Encoding-adaptive FileSystem backend for DeepSeek Harness (dsh): native UTF-8 / UTF-8 BOM passthrough with byte-exact round-trips for 16 non-UTF-8 encodings and encoding-aware grep.",
+  "keywords": [
+    "big5",
+    "coding-agent",
+    "deepseek-harness",
+    "dsh",
+    "dsh-plugin",
+    "encoding",
+    "euc-kr",
+    "gb18030",
+    "gbk",
+    "grep",
+    "iconv",
+    "shift-jis",
+    "utf-16",
+    "windows-1251"
+  ],
+  "license": "MIT",
+  "files": [
+    "lib",
+    "cordis.patch.yml",
+    "icon.svg",
+    "locale/*.json",
+    "README.md"
+  ],
+  "type": "module",
+  "main": "lib/index.js",
+  "types": "lib/types/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./lib/types/index.d.ts",
+      "default": "./lib/index.js"
+    },
+    "./cordis.patch.yml": "./cordis.patch.yml",
+    "./package.json": "./package.json",
+    "./locale/*.json": "./locale/*.json"
+  },
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://registry.npmjs.org/"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "prepack": "npm run build",
+    "typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.test.json",
+    "lint": "oxlint",
+    "lint:fix": "oxlint --fix",
+    "fmt": "oxfmt",
+    "fmt:check": "oxfmt --check",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "dev": "tsc -w -p tsconfig.json"
+  },
+  "dependencies": {
+    "chardet": "2.2.0",
+    "iconv-lite": "^0.6.3",
+    "koffi": "3.1.1"
+  },
+  "devDependencies": {
+    "@deepseek-ai/dsh-spill-local": "^0.2.2-rc.2",
+    "@deepseek-ai/dsh-subprocess-local": "^0.2.2-rc.2",
+    "@deepseek-ai/dsh-system-prompt": "^0.2.2-rc.2",
+    "@deepseek-ai/dsh-tool-executor-native": "^0.2.2-rc.2",
+    "@deepseek-ai/dsh-tool-fs": "^0.2.2-rc.2",
+    "@deepseek-ai/dsh-tool-str-replace-editor": "^0.2.2-rc.2",
+    "@deepseek-ai/dsh-util-values": "^0.2.2-rc.2",
+    "@types/node": "^22.15.0",
+    "oxfmt": "^0.78.0",
+    "oxlint": "^1.93.0",
+    "typescript": "^5.8.3",
+    "vitest": "^3.2.4"
+  },
+  "peerDependencies": {
+    "@deepseek-ai/cordis": "^4.1.0",
+    "@deepseek-ai/dsh-fs": ">=0.2.2-alpha.1 <0.3.0",
+    "@deepseek-ai/dsh-fs-local": ">=0.2.2-alpha.1 <0.3.0",
+    "@deepseek-ai/dsh-fs-patch": ">=0.2.2-alpha.1 <0.3.0",
+    "@deepseek-ai/dsh-llm": ">=0.2.2-alpha.1 <0.3.0",
+    "@deepseek-ai/dsh-sandbox": ">=0.2.2-alpha.1 <0.3.0",
+    "@deepseek-ai/dsh-tool-fs-search": ">=0.2.2-alpha.1 <0.3.0",
+    "@deepseek-ai/dsh-tools": ">=0.2.2-alpha.1 <0.3.0",
+    "@deepseek-ai/schemastery": "^3.19.0"
+  },
+  "peerDependenciesMeta": {
+    "@deepseek-ai/dsh-tool-fs-search": {
+      "optional": true
+    }
+  },
+  "icon": "./icon.svg",
+  "engines": {
+    "node": "^22.18.0 || ^24.0.0 || >=26.0.0",
+    "pnpm": ">=12.3.4"
+  },
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    }
+  }
+}

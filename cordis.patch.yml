@@ -1,0 +1,9 @@
+# dsh-fs-encoding-adaptive bundle patch:
+# Disable the built-in fs-sandbox provider and mount fs-encoding-adaptive
+# (which registers an encoding-adaptive FileSystem service preserving sandbox
+# confinement when sandbox is enabled).
+- id: fs-sandbox
+  disabled: true
+- insert:
+    - id: fs-encoding-adaptive
+      name: dsh-fs-encoding-adaptive
