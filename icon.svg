@@ -1,11 +1,36 @@
 <svg width="36" height="36" viewBox="0 0 36 36" fill="none" xmlns="http://www.w3.org/2000/svg">
-<defs>
-<linearGradient id="fsenc-adaptive-g" x1="18" y1="6" x2="18" y2="30" gradientUnits="userSpaceOnUse">
-<stop stop-color="#7AC2FF"/>
-<stop offset="1" stop-color="#4A65E8"/>
-</linearGradient>
-</defs>
-<g transform="translate(7.4475 26.1270) scale(0.02100000 -0.02100000)" fill="url(#fsenc-adaptive-g)">
-<path d="M673 623L824 583Q766 399 668.5 266.5Q571 134 431.5 46Q292 -42 107 -94Q99 -76 83.5 -50.5Q68 -25 50.5 0.5Q33 26 19 43Q196 83 325.5 156Q455 229 541 344Q627 459 673 623ZM325 614Q374 472 462 359Q550 246 680.5 167.5Q811 89 986 50Q970 34 951 9.5Q932 -15 915.5 -40.5Q899 -66 888 -86Q702 -37 569 52.5Q436 142 344.5 272.5Q253 403 190 573ZM41 691L964 691L964 549L41 549ZM406 822L562 868Q581 833 599.5 790.5Q618 748 625 716L459 665Q454 696 438.5 740.5Q423 785 406 822Z"/>
-</g>
+  <defs>
+    <linearGradient id="fsenc-adaptive-g" x1="18" y1="4" x2="18" y2="31" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#7AC2FF"/>
+      <stop offset="1" stop-color="#4A65E8"/>
+    </linearGradient>
+  </defs>
+  <path
+    d="M25 17.2V10L19 4H8C6.895 4 6 4.895 6 6V28C6 29.105 6.895 30 8 30H8.2"
+    stroke="url(#fsenc-adaptive-g)"
+    stroke-width="2.2"
+    stroke-linecap="round"
+    stroke-linejoin="round"
+  />
+  <path
+    d="M19 4V10H25"
+    stroke="url(#fsenc-adaptive-g)"
+    stroke-width="2"
+    stroke-linecap="round"
+    stroke-linejoin="round"
+  />
+  <path
+    d="M10.5 13.5H16.5M10.5 16.8H19"
+    stroke="url(#fsenc-adaptive-g)"
+    stroke-width="2"
+    stroke-linecap="round"
+  />
+  <rect x="10" y="19.5" width="21.5" height="11.5" rx="3" fill="url(#fsenc-adaptive-g)"/>
+  <path
+    d="M17 22.5H13.5V28H17M13.5 25.25H16.2M19 28V22.5L22.5 28V22.5M28 23.2C27.5 22.7 26.9 22.5 26.2 22.5C25.1 22.5 24.5 23.5 24.5 25.25C24.5 27 25.1 28 26.2 28C26.9 28 27.5 27.8 28 27.3"
+    stroke="#FFFFFF"
+    stroke-width="1.5"
+    stroke-linecap="round"
+    stroke-linejoin="round"
+  />
 </svg>
