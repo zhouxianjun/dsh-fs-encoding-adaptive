@@ -1,10 +1,26 @@
 import type { Context } from '@deepseek-ai/cordis';
-import type { FileSystem } from '@deepseek-ai/dsh-fs';
+import type { Agent } from '@deepseek-ai/dsh-agent';
+import type {} from '@deepseek-ai/dsh-fs';
 import { createUserMessage } from '@deepseek-ai/dsh-llm';
 import type { ContextFormed } from '@deepseek-ai/dsh-llm';
+import type {} from '@deepseek-ai/dsh-system-prompt';
+import type {} from '@deepseek-ai/dsh-tools';
+import type {} from '@deepseek-ai/dsh-working-directory';
 import { RG_ENCODING_LABELS } from './encoding/index.js';
 import type { NonUtf8EncodingRecord } from './encoding/index.js';
 import type { EncodingAdaptiveLocalFileSystem } from './fs/index.js';
+
+const ENCODING_PROMPT_TOOLS = [
+  'read',
+  'write',
+  'edit',
+  'apply_patch',
+  'str_replace_editor',
+  'grep',
+] as const;
+
+const ENCODING_PROMPT_SECTION_TEXT =
+  "Beyond their base UTF-8 tool schemas, `read`, `write`, `edit`, `apply_patch`, `str_replace_editor`, and `grep` are backed by `fs-encoding-adaptive` and support UTF-8 (with or without BOM) and 16 non-UTF-8 encodings (`utf16le`, `utf16be`, `gbk`, `gb18030`, `big5`, `shift_jis`, `euc-kr`, `windows-1250` through `windows-1257`, and `iso-8859-1`). Use these built-in tools directly on files in these encodings instead of shelling out to Python or PowerShell to avoid garbled text. Reading a non-UTF-8 file with `read` or `str_replace_editor` (`view`) attaches an encoding notice with its detected or configured encoding, BOM, and line endings (`LF`, `CRLF`, `CR`, or `MIXED`); in-place edits and writes preserve the file's encoding, BOM, and line endings with strict lossless round-trip verification (use external scripts or create a new target file only when converting between encodings or handling encodings outside the supported 16). `grep` automatically searches both UTF-8 and supported non-UTF-8 files via BOM and byte detection.";
 
 declare module '@deepseek-ai/dsh-llm' {
   interface MessageSourceMap {
@@ -36,21 +52,15 @@ export function formatEncodingNotice(filePath: string, rec: NonUtf8EncodingRecor
   return `${header} ${eolRule}, with strict lossless round-trip verification (rejecting unmappable characters without modifying the file).`;
 }
 
-async function resolveReadTarget(ctx: Context, filePath: string, agent: unknown) {
-  const fsService = (ctx as Context & { get(key: 'fs'): FileSystem | undefined }).get('fs');
+async function resolveReadTarget(ctx: Context, filePath: string, agent: Agent | undefined) {
+  const fsService = ctx.get('fs');
   if (!fsService) {
     return undefined;
   }
 
   let cwd: string | undefined;
-  const wd = (
-    ctx as Context & {
-      get(
-        key: 'workingDirectory',
-      ): { ensure?: (agent: unknown) => Promise<string | undefined> } | undefined;
-    }
-  ).get('workingDirectory');
-  if (agent !== undefined && wd?.ensure) {
+  const wd = ctx.get('workingDirectory');
+  if (agent !== undefined && wd) {
     cwd = await wd.ensure(agent).catch(() => undefined);
   }
 
@@ -132,5 +142,25 @@ export function registerReadEncodingNotice(
       ...decision,
       additionalContexts: [...(decision.additionalContexts ?? []), notice],
     };
+  });
+}
+
+/**
+ * Registers a scope-aware system-prompt section advertising encoding-adaptive
+ * capabilities when any supported built-in filesystem or search tool is visible.
+ */
+export function registerEncodingSystemPrompt(ctx: Context): void {
+  ctx.inject(['systemPrompt', 'tools'], (promptCtx) => {
+    promptCtx.systemPrompt.section({
+      name: 'tool:fs-encoding-adaptive',
+      order: promptCtx.systemPrompt.getSectionOrder('TOOL_GREP') + 10,
+      interpolate: false,
+      text: ({ scope, toolSet }) =>
+        ENCODING_PROMPT_TOOLS.some(
+          (name) => promptCtx.tools.get(name, scope, toolSet) !== undefined,
+        )
+          ? ENCODING_PROMPT_SECTION_TEXT
+          : '',
+    });
   });
 }

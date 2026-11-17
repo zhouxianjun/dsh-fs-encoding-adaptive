@@ -2,7 +2,7 @@ import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
 import { Context, Service } from '@deepseek-ai/cordis';
-import type { FileSystem } from '@deepseek-ai/dsh-fs';
+import type {} from '@deepseek-ai/dsh-fs';
 import type { SandboxExecutionPolicy, SandboxMode } from '@deepseek-ai/dsh-sandbox';
 import iconv from 'iconv-lite';
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -61,7 +61,7 @@ describe('EncodingAdaptiveSandboxedFileSystem & sandbox policy integration', () 
 
     await ctx.plugin(encodingPlugin, { cwd: workspace, sandbox: true }).await();
 
-    const fsSvc = (ctx as Context & { fs: FileSystem }).fs;
+    const fsSvc = ctx.fs;
     expect(fsSvc).toBeInstanceOf(EncodingAdaptiveSandboxedFileSystem);
     expect(fsSvc.sandboxMode).toBe('read-only');
 
@@ -114,7 +114,7 @@ describe('EncodingAdaptiveSandboxedFileSystem & sandbox policy integration', () 
     registerFakeSandboxPolicy(ctx, 'workspace-write', workspace);
     await ctx.plugin(encodingPlugin, { cwd: workspace, sandbox: true }).await();
 
-    const fsSvc = (ctx as Context & { fs: FileSystem }).fs;
+    const fsSvc = ctx.fs;
     const inTarget = await fsSvc.resolve(inGbk);
     const outTarget = await fsSvc.resolve(outGbk);
     const linkTarget = await fsSvc.resolve(linkEscape);
@@ -176,7 +176,7 @@ describe('EncodingAdaptiveSandboxedFileSystem & sandbox policy integration', () 
     registerFakeSandboxPolicy(ctx, 'workspace-write', workspace);
     await ctx.plugin(encodingPlugin, { cwd: workspace, sandbox: true }).await();
 
-    const fsSvc = (ctx as Context & { fs: FileSystem }).fs;
+    const fsSvc = ctx.fs;
     expect(fsSvc).toBeInstanceOf(EncodingAdaptiveSandboxedFileSystem);
 
     const extraTarget = await fsSvc.resolve(extraGbk);

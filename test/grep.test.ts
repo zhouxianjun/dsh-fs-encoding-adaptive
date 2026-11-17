@@ -2,7 +2,8 @@ import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
 import { Context, Service } from '@deepseek-ai/cordis';
-import type { ToolCallId } from '@deepseek-ai/dsh-llm';
+import { ToolCallId } from '@deepseek-ai/dsh-llm';
+import type { TextBlock } from '@deepseek-ai/dsh-llm';
 import { LocalSpillStore } from '@deepseek-ai/dsh-spill-local';
 import { LocalSubprocessRuntime } from '@deepseek-ai/dsh-subprocess-local';
 import { SystemPrompt } from '@deepseek-ai/dsh-system-prompt';
@@ -78,7 +79,7 @@ describe('Encoding-aware grep interception (tools/execute)', () => {
       timeoutMs: SEARCH_TIMEOUT_MS,
     });
 
-    const tools = (ctx as Context & { tools: ToolsService }).tools;
+    const tools = ctx.tools;
     return { ctx, tools };
   }
 
@@ -93,7 +94,7 @@ describe('Encoding-aware grep interception (tools/execute)', () => {
       calls: [
         {
           type: 'tool-call',
-          id: id as ToolCallId,
+          id: ToolCallId(id),
           name: 'grep',
           arguments: JSON.stringify(args),
         },
@@ -247,7 +248,7 @@ describe('Encoding-aware grep interception (tools/execute)', () => {
     const matches = (res.value as unknown as { matches: GrepMatch[] }).matches;
     expect(matches).toHaveLength(280);
 
-    const rendered = (res.content[0] as { type: 'text'; text: string }).text;
+    const rendered = (res.content[0] as TextBlock).text;
     expect(rendered).toContain('Found 250 of 280 matches');
     expect(rendered).toContain('Line 251:');
     expect(rendered).not.toContain('Line 252:');

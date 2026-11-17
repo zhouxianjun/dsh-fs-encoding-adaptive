@@ -45,6 +45,12 @@ importers:
         specifier: 3.1.1
         version: 3.1.1
     devDependencies:
+      '@deepseek-ai/dsh-agent':
+        specifier: ^0.2.2-rc.3
+        version: 0.2.2-rc.3(5a66ed30ebfeae025fb260d2c5c96077)
+      '@deepseek-ai/dsh-sandbox-policy':
+        specifier: ^0.2.2-rc.3
+        version: 0.2.2-rc.3(d7345948cd7aa2f1160bb22ca17379de)
       '@deepseek-ai/dsh-spill-local':
         specifier: ^0.2.2-rc.3
         version: 0.2.2-rc.3(@deepseek-ai/cordis@4.1.0)(@deepseek-ai/dsh-spill@0.2.2-rc.3(@deepseek-ai/cordis@4.1.0)(@deepseek-ai/dsh-brand@0.2.2-rc.3(@deepseek-ai/cordis@4.1.0))(@deepseek-ai/dsh-llm@0.2.2-rc.3(@deepseek-ai/cordis@4.1.0)(@deepseek-ai/dsh-error@0.2.2-rc.3(@deepseek-ai/cordis@4.1.0)))(@deepseek-ai/dsh-session@0.2.2-rc.3(@deepseek-ai/cordis@4.1.0)(@deepseek-ai/dsh-error@0.2.2-rc.3(@deepseek-ai/cordis@4.1.0))(@deepseek-ai/dsh-scope@0.2.2-rc.3(@deepseek-ai/cordis@4.1.0))))
@@ -66,6 +72,9 @@ importers:
       '@deepseek-ai/dsh-util-values':
         specifier: ^0.2.2-rc.3
         version: 0.2.2-rc.3(@deepseek-ai/cordis@4.1.0)
+      '@deepseek-ai/dsh-working-directory':
+        specifier: ^0.2.2-rc.3
+        version: 0.2.2-rc.3(58bbce42e90a903c4344c75a07fc310a)
       '@types/node':
         specifier: ^22.15.0
         version: 22.20.5

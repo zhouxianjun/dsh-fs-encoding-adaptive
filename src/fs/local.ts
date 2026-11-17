@@ -98,10 +98,7 @@ export class EncodingAdaptiveLocalFileSystem extends LocalFileSystem {
   }
 
   private readonly warnLog = (message: string): void => {
-    const loggerFn = (
-      this.ctx as Context & { logger?: (name: string) => { warn: (msg: string) => void } }
-    ).logger;
-    loggerFn?.('fs-encoding-adaptive').warn(message);
+    this.ctx.logger('fs-encoding-adaptive').warn(message);
   };
 
   private compileOverridesWithWarn(
@@ -485,7 +482,7 @@ export class EncodingAdaptiveLocalFileSystem extends LocalFileSystem {
   ): Promise<FsWriteOutcome> {
     if (!options || !isSupportedTextEncoding(options.encoding)) {
       throw new FsError(
-        `Unsupported encoding '${String((options as { encoding?: unknown } | undefined)?.encoding)}' for ${target.displayPath}`,
+        `Unsupported encoding '${options.encoding}' for ${target.displayPath}`,
         'FS_IO_ERROR',
       );
     }

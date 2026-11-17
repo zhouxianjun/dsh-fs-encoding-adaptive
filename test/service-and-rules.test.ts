@@ -3,9 +3,10 @@ import { createRequire } from 'node:module';
 import * as os from 'node:os';
 import * as path from 'node:path';
 import { Context, Service } from '@deepseek-ai/cordis';
-import type { FileSystem } from '@deepseek-ai/dsh-fs';
+import type {} from '@deepseek-ai/dsh-fs';
 import { parsePatch } from '@deepseek-ai/dsh-fs-patch';
-import type { ToolCallId } from '@deepseek-ai/dsh-llm';
+import { ToolCallId } from '@deepseek-ai/dsh-llm';
+import type { TextBlock } from '@deepseek-ai/dsh-llm';
 import type { SandboxExecutionPolicy, SandboxMode } from '@deepseek-ai/dsh-sandbox';
 import { LocalSubprocessRuntime } from '@deepseek-ai/dsh-subprocess-local';
 import { SystemPrompt } from '@deepseek-ai/dsh-system-prompt';
@@ -24,7 +25,7 @@ import { ToolsService } from '@deepseek-ai/dsh-tools';
 import iconv from 'iconv-lite';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import * as encodingPlugin from '../src/index.js';
-import type { EncodingResolver, FsEncodingService } from '../src/index.js';
+import type { EncodingResolver } from '../src/index.js';
 
 const require = createRequire(import.meta.url);
 const pkg = require('../package.json') as { readonly version: string };
@@ -88,8 +89,8 @@ describe('FsEncodingService, resolver callbacks, unified cache, and proactive AS
       })
       .await();
 
-    const fsSvc = (ctx as Context & { fs: FileSystem }).fs;
-    const encSvc = (ctx as Context & { fsEncoding: FsEncodingService }).fsEncoding;
+    const fsSvc = ctx.fs;
+    const encSvc = ctx.fsEncoding;
 
     expect(encSvc).toBeDefined();
     expect(encSvc.version).toBe(pkg.version);
@@ -181,7 +182,7 @@ describe('FsEncodingService, resolver callbacks, unified cache, and proactive AS
 
     // 4. Disposing sandboxPolicy unmounts ctx.fsEncoding and clears activeFs cleanly
     await sandboxFork.dispose();
-    expect((ctx as Context & { fsEncoding?: FsEncodingService }).fsEncoding).toBeUndefined();
+    expect(ctx.get('fsEncoding')).toBeUndefined();
     await expect(
       encSvc.createText(await fsSvc.resolve(path.join(workspace, 'after-dispose.txt')), 'x', {
         encoding: 'gbk',
@@ -229,8 +230,8 @@ describe('FsEncodingService, resolver callbacks, unified cache, and proactive AS
       })
       .await();
 
-    const fsSvc = (ctx as Context & { fs: FileSystem }).fs;
-    const encSvc = (ctx as Context & { fsEncoding: FsEncodingService }).fsEncoding;
+    const fsSvc = ctx.fs;
+    const encSvc = ctx.fsEncoding;
 
     // Invalid config.encodings entry logged warning and skipped
     expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('not-a-codec'));
@@ -361,8 +362,8 @@ describe('FsEncodingService, resolver callbacks, unified cache, and proactive AS
       })
       .await();
 
-    const fsSvc = (ctx as Context & { fs: FileSystem }).fs;
-    const tools = (ctx as Context & { tools: ToolsService }).tools;
+    const fsSvc = ctx.fs;
+    const tools = ctx.tools;
 
     // 1. Existing non-ASCII UTF-8 and UTF-8 BOM files under '*.txt': 'gbk' stay UTF-8
     const utf8Path = path.join(dir, 'existing-utf8.txt');
@@ -420,7 +421,7 @@ describe('FsEncodingService, resolver callbacks, unified cache, and proactive AS
       calls: [
         {
           type: 'tool-call',
-          id: 'r1' as ToolCallId,
+          id: ToolCallId('r1'),
           name: 'read',
           arguments: JSON.stringify({ file_path: asciiPath }),
         },
@@ -429,7 +430,7 @@ describe('FsEncodingService, resolver callbacks, unified cache, and proactive AS
     });
     const contexts = readRes.results[0]!.result.additionalContexts ?? readRes.additionalContexts;
     expect(contexts).toHaveLength(1);
-    const notice = (contexts[0]!.content[0] as { type: 'text'; text: string }).text;
+    const notice = (contexts[0]!.content[0] as TextBlock).text;
     expect(notice).toContain('handled as gbk via rule');
     expect(notice).toContain('source: override');
     expect(notice).not.toContain('was decoded from');
@@ -514,9 +515,9 @@ describe('FsEncodingService, resolver callbacks, unified cache, and proactive AS
       timeoutMs: SEARCH_TIMEOUT_MS,
     });
 
-    const tools = (ctx as Context & { tools: ToolsService }).tools;
-    const fsSvc = (ctx as Context & { fs: FileSystem }).fs;
-    const encSvc = (ctx as Context & { fsEncoding: FsEncodingService }).fsEncoding;
+    const tools = ctx.tools;
+    const fsSvc = ctx.fs;
+    const encSvc = ctx.fsEncoding;
 
     // 1. Large >64 KiB file starting with valid UTF-8 bytes then GBK bytes:
     // grep must NOT cache 'utf8' into encodingCache or invoke resolveEncoding.
@@ -534,7 +535,7 @@ describe('FsEncodingService, resolver callbacks, unified cache, and proactive AS
       calls: [
         {
           type: 'tool-call',
-          id: 'g1' as ToolCallId,
+          id: ToolCallId('g1'),
           name: 'grep',
           arguments: JSON.stringify({ pattern: 'AAAA' }),
         },

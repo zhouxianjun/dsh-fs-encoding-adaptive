@@ -6,7 +6,7 @@ import {
   EncodingAdaptiveLocalFileSystem,
   EncodingAdaptiveSandboxedFileSystem,
 } from './fs/index.js';
-import { registerReadEncodingNotice } from './read-notice.js';
+import { registerEncodingSystemPrompt, registerReadEncodingNotice } from './read-notice.js';
 import { inspectFileEncodingForSearch, registerGrepHook } from './search/index.js';
 import { FsEncodingService } from './service.js';
 
@@ -72,9 +72,7 @@ export function apply(ctx: Context, config: Config): void {
       }
     };
 
-    const hasSandboxPolicy = Boolean(
-      (ctx as Context & { get(key: string): unknown }).get('sandboxPolicy'),
-    );
+    const hasSandboxPolicy = Boolean(ctx.get('sandboxPolicy'));
     if (!hasSandboxPolicy) {
       waitTimer = setTimeout(() => {
         waitTimer = undefined;
@@ -116,4 +114,5 @@ export function apply(ctx: Context, config: Config): void {
   );
 
   registerReadEncodingNotice(ctx, () => activeFs);
+  registerEncodingSystemPrompt(ctx);
 }

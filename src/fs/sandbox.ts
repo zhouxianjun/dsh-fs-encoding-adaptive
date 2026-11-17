@@ -12,14 +12,10 @@ import type {
 } from '@deepseek-ai/dsh-fs';
 import type { PatchHunk } from '@deepseek-ai/dsh-fs-patch';
 import type { SandboxExecutionPolicy, SandboxMode } from '@deepseek-ai/dsh-sandbox';
+import type {} from '@deepseek-ai/dsh-sandbox-policy';
 import { checkedTarget } from '../upstream/sandbox-fence.js';
 import { EncodingAdaptiveLocalFileSystem } from './local.js';
 import type { CreateTextOptions, EncodingAdaptiveConfig } from './local.js';
-
-interface SandboxPolicyServiceLike {
-  readonly defaultMode: SandboxMode;
-  resolve(request?: unknown): SandboxExecutionPolicy;
-}
 
 /**
  * Sandbox-enforcing subclass of `EncodingAdaptiveLocalFileSystem`.
@@ -34,8 +30,7 @@ export class EncodingAdaptiveSandboxedFileSystem extends EncodingAdaptiveLocalFi
 
   constructor(ctx: Context, config: EncodingAdaptiveConfig = {}) {
     super(ctx, config);
-    const policy = (this.ctx as Context & { sandboxPolicy?: SandboxPolicyServiceLike })
-      .sandboxPolicy;
+    const policy = this.ctx.get('sandboxPolicy');
     if (!policy) {
       throw new FsError(
         'sandboxPolicy service is required when sandbox enforcement is enabled',
@@ -50,9 +45,7 @@ export class EncodingAdaptiveSandboxedFileSystem extends EncodingAdaptiveLocalFi
   }
 
   private resolveDefaultPolicy(): SandboxExecutionPolicy {
-    const policy = (this.ctx as Context & { sandboxPolicy: SandboxPolicyServiceLike })
-      .sandboxPolicy;
-    return policy.resolve();
+    return this.ctx.sandboxPolicy.resolve();
   }
 
   override async createText(

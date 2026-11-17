@@ -201,7 +201,7 @@ export function restoreEol(lfText: string, eol: EolStyle): string {
 export function decodeBytesRaw(raw: Buffer, encoding: NonUtf8Encoding, hasBom: boolean): string {
   const payload =
     hasBom && (encoding === 'utf16le' || encoding === 'utf16be') ? raw.subarray(2) : raw;
-  return iconv.decode(payload, ICONV_NAMES[encoding], { stripBOM: false } as iconv.Options);
+  return iconv.decode(payload, ICONV_NAMES[encoding], { stripBOM: false });
 }
 
 export function encodeTextRaw(text: string, encoding: NonUtf8Encoding, hasBom: boolean): Buffer {

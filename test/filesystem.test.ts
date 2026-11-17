@@ -2,13 +2,15 @@ import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
 import { Context } from '@deepseek-ai/cordis';
-import type { FsInfo, FsTarget, FsVersion, FileSystem } from '@deepseek-ai/dsh-fs';
+import { FsVersion } from '@deepseek-ai/dsh-fs';
+import type { FsInfo, FsTarget } from '@deepseek-ai/dsh-fs';
 import { LocalFileSystem } from '@deepseek-ai/dsh-fs-local';
 import { parsePatch } from '@deepseek-ai/dsh-fs-patch';
 import { SystemPrompt } from '@deepseek-ai/dsh-system-prompt';
 import { ToolsService } from '@deepseek-ai/dsh-tools';
 import * as nativeExecutor from '@deepseek-ai/dsh-tool-executor-native';
-import type { ToolCallId } from '@deepseek-ai/dsh-llm';
+import { ToolCallId } from '@deepseek-ai/dsh-llm';
+import type { TextBlock } from '@deepseek-ai/dsh-llm';
 import iconv from 'iconv-lite';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { EncodingAdaptiveLocalFileSystem } from '../src/fs/local.js';
@@ -317,7 +319,7 @@ describe('EncodingAdaptiveLocalFileSystem', () => {
         readStatCalls++;
         const real = await adaptive.stat(target);
         if (readStatCalls > 1 && real) {
-          return { ...real, version: 'mid-read-changed-version' as FsVersion };
+          return { ...real, version: FsVersion('mid-read-changed-version') };
         }
         return real;
       }),
@@ -331,7 +333,7 @@ describe('EncodingAdaptiveLocalFileSystem', () => {
     // Pre-rename stale version rejection inside writeBytesAtomic
     const staleStatFn = async (): Promise<FsInfo | undefined> => {
       const real = await adaptive.stat(target);
-      return real ? { ...real, version: 'stale-changed-version' as FsVersion } : real;
+      return real ? { ...real, version: FsVersion('stale-changed-version') } : real;
     };
 
     await expect(
@@ -380,8 +382,8 @@ describe('EncodingAdaptiveLocalFileSystem', () => {
     ctx.plugin(nativeExecutor);
     await ctx.plugin(encodingPlugin, { sandbox: false, cwd: dir }).await();
 
-    const fsSvc = (ctx as Context & { fs: FileSystem }).fs;
-    const tools = (ctx as Context & { tools: ToolsService }).tools;
+    const fsSvc = ctx.fs;
+    const tools = ctx.tools;
 
     const gbkFile = path.join(dir, 'legacy.gbk.txt');
     const utf8BomFile = path.join(dir, 'native-bom.txt');
@@ -417,7 +419,7 @@ describe('EncodingAdaptiveLocalFileSystem', () => {
       calls: [
         {
           type: 'tool-call',
-          id: 'c1' as ToolCallId,
+          id: ToolCallId('c1'),
           name: 'read',
           arguments: JSON.stringify({ file_path: gbkFile }),
         },
@@ -432,7 +434,7 @@ describe('EncodingAdaptiveLocalFileSystem', () => {
     });
     const gbkContexts = resGbk.additionalContexts ?? batchGbk.additionalContexts;
     expect(gbkContexts).toHaveLength(1);
-    const noticeText = (gbkContexts[0]!.content[0] as { type: 'text'; text: string }).text;
+    const noticeText = (gbkContexts[0]!.content[0] as TextBlock).text;
     expect(noticeText).toContain('gbk');
     expect(noticeText).toContain('LF');
 
@@ -440,7 +442,7 @@ describe('EncodingAdaptiveLocalFileSystem', () => {
       calls: [
         {
           type: 'tool-call',
-          id: 'c2' as ToolCallId,
+          id: ToolCallId('c2'),
           name: 'read',
           arguments: JSON.stringify({ file_path: utf8BomFile }),
         },
@@ -482,7 +484,7 @@ describe('EncodingAdaptiveLocalFileSystem', () => {
       calls: [
         {
           type: 'tool-call',
-          id: 'c3' as ToolCallId,
+          id: ToolCallId('c3'),
           name: 'str_replace_editor',
           arguments: JSON.stringify({ command: 'view', path: gbkFile }),
         },
@@ -493,13 +495,13 @@ describe('EncodingAdaptiveLocalFileSystem', () => {
     expect(resView.isError).toBe(false);
     const viewContexts = resView.additionalContexts ?? batchView.additionalContexts;
     expect(viewContexts).toHaveLength(1);
-    expect((viewContexts[0]!.content[0] as { type: 'text'; text: string }).text).toContain('gbk');
+    expect((viewContexts[0]!.content[0] as TextBlock).text).toContain('gbk');
 
     const batchStrReplace = await tools.execute({
       calls: [
         {
           type: 'tool-call',
-          id: 'c4' as ToolCallId,
+          id: ToolCallId('c4'),
           name: 'str_replace_editor',
           arguments: JSON.stringify({ command: 'str_replace', path: gbkFile }),
         },
@@ -515,7 +517,7 @@ describe('EncodingAdaptiveLocalFileSystem', () => {
       eol: 'mixed',
       confident: false,
       source: 'chardet',
-      version: 'v1' as FsVersion,
+      version: FsVersion('v1'),
     });
     expect(lowConfMixedNotice).toContain('utf16le');
     expect(lowConfMixedNotice).toContain('BOM');

@@ -1,7 +1,7 @@
 import * as path from 'node:path';
 import type { Context } from '@deepseek-ai/cordis';
 import type { JsonValue } from '@deepseek-ai/dsh-util-values';
-import type { ToolExecution, ToolExecutionResult } from '@deepseek-ai/dsh-tools';
+import type { ToolExecutionResult } from '@deepseek-ai/dsh-tools';
 import { FsError } from '@deepseek-ai/dsh-fs';
 import {
   RAW_OUTPUT_MAX_BYTES,
@@ -147,9 +147,7 @@ export function registerGrepHook(
 
       let input: GrepInput;
       try {
-        input = parseGrepArgs(
-          exec.arguments as { pattern: string; path?: string; include?: string },
-        );
+        input = parseGrepArgs(exec.arguments as GrepInput);
       } catch {
         return result;
       }
@@ -157,7 +155,7 @@ export function registerGrepHook(
       const prefilterArgv = buildPrefilterArgv(input);
       const prefilterRun = await runRipgrep(
         rgCtx,
-        exec as ToolExecution,
+        exec,
         'grep',
         prefilterArgv,
         RAW_OUTPUT_MAX_BYTES,
@@ -232,7 +230,7 @@ export function registerGrepHook(
           const encArgv = buildEncodingGroupArgv(input, enc, batch);
           const encRun = await runRipgrep(
             rgCtx,
-            exec as ToolExecution,
+            exec,
             'grep',
             encArgv,
             RAW_OUTPUT_MAX_BYTES,
