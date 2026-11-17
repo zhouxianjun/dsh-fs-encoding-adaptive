@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import { FsError } from '@deepseek-ai/dsh-fs';
-import type { CompiledEncodingOverride, NonUtf8Encoding } from '../encoding/index.js';
 import { decodeAndValidateNonUtf8, isValidUtf8Text } from '../encoding/index.js';
+import type { NonUtf8Encoding } from '../encoding/index.js';
 import { isFsNotTextError } from '../fs/edit.js';
 
 const SEARCH_SAMPLE_BYTES = 65536;
@@ -51,11 +51,14 @@ function trimIncompleteUtf8Tail(buf: Buffer): Buffer {
   return len - i < expectedLen ? buf.subarray(0, i) : buf;
 }
 
+/**
+ * Inspects a file's bytes using BOM/chardet auto-detection for encoding-aware
+ * search, independent of filesystem `encodingCache`, `config.encodings`, or
+ * `resolveEncoding` callbacks.
+ */
 export async function inspectFileEncodingForSearch(
   realPath: string,
   displayPath: string,
-  overrides: readonly CompiledEncodingOverride[],
-  cwd?: string,
   signal?: AbortSignal,
 ): Promise<SearchFileInspection> {
   if (signal?.aborted) {
@@ -105,7 +108,7 @@ export async function inspectFileEncodingForSearch(
         break;
       }
       try {
-        const decoded = decodeAndValidateNonUtf8(slice, displayPath, overrides, cwd);
+        const decoded = decodeAndValidateNonUtf8(slice, displayPath);
         return { kind: 'non-utf8', encoding: decoded.encoding };
       } catch (err) {
         if (isFsNotTextError(err) && trim < trimLimit) {
@@ -116,8 +119,10 @@ export async function inspectFileEncodingForSearch(
     }
     return { kind: 'binary' };
   } catch (err) {
-    if (err instanceof FsError && err.code === 'FS_ABORTED') {
-      throw err;
+    if ((err instanceof FsError && err.code === 'FS_ABORTED') || signal?.aborted) {
+      throw err instanceof FsError
+        ? err
+        : new FsError(`Search inspection aborted: ${displayPath}`, 'FS_ABORTED');
     }
     return { kind: 'binary' };
   } finally {

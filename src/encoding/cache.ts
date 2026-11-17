@@ -1,14 +1,22 @@
 import type { FsVersion } from '@deepseek-ai/dsh-fs';
 import type { EolStyle, NonUtf8Encoding } from './codecs.js';
 
-export interface EncodingRecord {
+export interface NonUtf8EncodingRecord {
   readonly encoding: NonUtf8Encoding;
   readonly hasBom: boolean;
   readonly eol: EolStyle;
   readonly confident: boolean;
-  readonly source: 'override' | 'bom' | 'chardet';
+  readonly source: 'callback' | 'override' | 'bom' | 'chardet' | 'explicit';
   readonly version: FsVersion;
 }
+
+export interface Utf8EncodingRecord {
+  readonly encoding: 'utf8';
+  readonly source: 'callback' | 'override' | 'detect' | 'explicit';
+  readonly version: FsVersion;
+}
+
+export type EncodingRecord = NonUtf8EncodingRecord | Utf8EncodingRecord;
 
 export class EncodingStateCache {
   private readonly maxEntries = 1000;

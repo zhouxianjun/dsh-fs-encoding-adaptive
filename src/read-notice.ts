@@ -3,7 +3,7 @@ import type { FileSystem } from '@deepseek-ai/dsh-fs';
 import { createUserMessage } from '@deepseek-ai/dsh-llm';
 import type { ContextFormed } from '@deepseek-ai/dsh-llm';
 import { RG_ENCODING_LABELS } from './encoding/index.js';
-import type { EncodingRecord } from './encoding/index.js';
+import type { NonUtf8EncodingRecord } from './encoding/index.js';
 import type { EncodingAdaptiveLocalFileSystem } from './fs/index.js';
 
 declare module '@deepseek-ai/dsh-llm' {
@@ -17,17 +17,21 @@ declare module '@deepseek-ai/dsh-llm' {
 /**
  * Formats the post-read encoding notice injected for non-UTF-8 files.
  */
-export function formatEncodingNotice(filePath: string, rec: EncodingRecord): string {
+export function formatEncodingNotice(filePath: string, rec: NonUtf8EncodingRecord): string {
   const bomNote = rec.hasBom ? ', BOM' : '';
   const confidenceGate = rec.confident
     ? ''
     : ` [low confidence — mutations are refused until an encodings override is configured for "${filePath}"]`;
-  const header = `File "${filePath}" was decoded from ${rec.encoding}${bomNote} (ripgrep label: ${RG_ENCODING_LABELS[rec.encoding]}, EOL: ${rec.eol.toUpperCase()}, source: ${rec.source})${confidenceGate}.`;
+  const originPhrase =
+    rec.source === 'callback' || rec.source === 'override'
+      ? `is handled as ${rec.encoding}${bomNote} via rule`
+      : `was decoded from ${rec.encoding}${bomNote}`;
+  const header = `File "${filePath}" ${originPhrase} (ripgrep label: ${RG_ENCODING_LABELS[rec.encoding]}, EOL: ${rec.eol.toUpperCase()}, source: ${rec.source})${confidenceGate}.`;
 
   const eolRule =
     rec.eol === 'mixed'
-      ? `${rec.confident ? 'Targeted edits' : 'Once configured, targeted edits still'} refuse mixed line endings; full-file overwrites preserve ${rec.hasBom ? 'its original encoding and BOM' : 'its original encoding'} (using the written line endings)`
-      : `${rec.confident ? 'Edits and overwrites' : 'Once configured, edits and overwrites'} (including full-file writes) preserve ${rec.hasBom ? 'its original encoding, BOM, and line endings' : 'its original encoding and line endings'}`;
+      ? `${rec.confident ? 'Targeted edits' : 'Once configured, targeted edits still'} refuse mixed line endings; under the current filesystem configuration, full-file writes target ${rec.hasBom ? 'this encoding and BOM' : 'this encoding'} (using the written line endings)`
+      : `${rec.confident ? 'Under the current filesystem configuration, edits and overwrites' : 'Once configured, edits and overwrites'} (including full-file writes) target ${rec.hasBom ? 'this encoding, BOM, and line endings' : 'this encoding and line endings'}`;
 
   return `${header} ${eolRule}, with strict lossless round-trip verification (rejecting unmappable characters without modifying the file).`;
 }
@@ -111,7 +115,7 @@ export function registerReadEncodingNotice(
     }
 
     const rec = activeFs.encodingCache.getLatest(target.targetKey);
-    if (!rec) {
+    if (!rec || rec.encoding === 'utf8') {
       return decision;
     }
 

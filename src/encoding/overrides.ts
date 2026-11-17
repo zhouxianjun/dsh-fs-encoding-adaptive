@@ -1,24 +1,34 @@
 import * as path from 'node:path';
-import { normalizeEncodingName } from './codecs.js';
-import type { NonUtf8Encoding } from './codecs.js';
+import { normalizeOverrideEncoding } from './codecs.js';
+import type { SupportedTextEncoding } from './codecs.js';
 
 export interface CompiledEncodingOverride {
   readonly pattern: string;
   readonly regex: RegExp;
   readonly basenameOnly: boolean;
-  readonly encoding: NonUtf8Encoding;
+  readonly encoding: SupportedTextEncoding;
 }
 
+/**
+ * Compiles glob-to-encoding rules in declaration order.
+ *
+ * Rules are evaluated with later-declaration precedence (`matchEncodingOverride`
+ * scans in reverse), so narrower `'utf8'` exemptions must be declared after
+ * broader non-UTF-8 patterns (for example `{"*.txt": "gbk", "README.txt": "utf8"}`).
+ * Unrecognized encoding names are reported via `onInvalid` and skipped.
+ */
 export function compileEncodingOverrides(
   overrides: Record<string, string> | undefined,
+  onInvalid?: (pattern: string, rawEncoding: string) => void,
 ): CompiledEncodingOverride[] {
   if (!overrides) {
     return [];
   }
   const compiled: CompiledEncodingOverride[] = [];
   for (const [pattern, rawEnc] of Object.entries(overrides)) {
-    const enc = normalizeEncodingName(rawEnc);
+    const enc = normalizeOverrideEncoding(rawEnc);
     if (!enc) {
+      onInvalid?.(pattern, rawEnc);
       continue;
     }
     const normalizedPattern = pattern.replace(/\\/g, '/').replace(/^\.\//, '');
@@ -72,7 +82,7 @@ export function matchEncodingOverride(
   filePath: string,
   overrides: readonly CompiledEncodingOverride[],
   cwd?: string,
-): NonUtf8Encoding | undefined {
+): SupportedTextEncoding | undefined {
   if (overrides.length === 0) {
     return undefined;
   }

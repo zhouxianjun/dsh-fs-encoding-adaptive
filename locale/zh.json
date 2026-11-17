@@ -1,11 +1,14 @@
 {
-  "description": "自适应多编码文件系统后端：UTF-8（含 UTF-8 BOM）100% 直通官方原生逻辑，同时支持 16 种传统非 UTF-8 编码（GBK、GB18030、Big5、Shift-JIS、EUC-KR、UTF-16、Windows-1250~1257、ISO-8859-1）的无损读写编辑与 grep 检索。",
+  "description": "自适应多编码文件系统后端与 ctx.fsEncoding 服务：在保护存量 UTF-8（含 UTF-8 BOM）文件的前提下，支持显式 createText 新建、回调 > 配置 > 检测优先级解析、16 种传统非 UTF-8 编码无损读写编辑与 grep 检索。",
   "config": {
     "sandbox": {
       "description": "使用 sandboxPolicy（SandboxedFileSystem）约束写入权限。仅在无沙箱策略的环境中关闭。"
     },
     "encodings": {
-      "description": "按路径 glob 覆盖探测编码的映射规则（例如 {\"*.csv\": \"gbk\", \"legacy/**\": \"shift_jis\"}）。"
+      "description": "按路径 glob 覆盖编码的映射规则（后声明优先，支持在宽规则后配置 'utf8' 豁免，例如 {\"*.csv\": \"gbk\", \"legacy/**\": \"shift_jis\", \"legacy/README.txt\": \"utf8\"}）。"
+    },
+    "resolveEncoding": {
+      "description": "可选的自定义编码解析回调函数（优先级高于 config.encodings 与自动检测）。"
     }
   }
 }

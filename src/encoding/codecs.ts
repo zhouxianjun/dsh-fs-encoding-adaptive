@@ -22,6 +22,8 @@ export const NON_UTF8_ENCODINGS = [
 
 export type NonUtf8Encoding = (typeof NON_UTF8_ENCODINGS)[number];
 
+export type SupportedTextEncoding = 'utf8' | NonUtf8Encoding;
+
 export type EolStyle = 'lf' | 'crlf' | 'cr' | 'mixed';
 
 export const RG_ENCODING_LABELS: Record<NonUtf8Encoding, string> = {
@@ -113,8 +115,39 @@ const ENCODING_ALIASES: Record<string, NonUtf8Encoding> = {
   latin1: 'iso-8859-1',
 };
 
+const NON_UTF8_ENCODING_SET: ReadonlySet<string> = new Set(NON_UTF8_ENCODINGS);
+
+export function isSupportedNonUtf8Encoding(value: unknown): value is NonUtf8Encoding {
+  return typeof value === 'string' && NON_UTF8_ENCODING_SET.has(value);
+}
+
+export function isSupportedTextEncoding(value: unknown): value is SupportedTextEncoding {
+  return value === 'utf8' || isSupportedNonUtf8Encoding(value);
+}
+
 export function normalizeEncodingName(raw: string): NonUtf8Encoding | undefined {
   return ENCODING_ALIASES[raw.trim().toLowerCase()];
+}
+
+export function normalizeOverrideEncoding(raw: string): SupportedTextEncoding | undefined {
+  const lowered = raw.trim().toLowerCase();
+  if (lowered === 'utf8' || lowered === 'utf-8') {
+    return 'utf8';
+  }
+  return ENCODING_ALIASES[lowered];
+}
+
+export function hasUtf8Bom(raw: Buffer): boolean {
+  return raw.length >= 3 && raw[0] === 0xef && raw[1] === 0xbb && raw[2] === 0xbf;
+}
+
+export function hasNonAsciiByte(raw: Buffer): boolean {
+  for (let i = 0; i < raw.length; i++) {
+    if (raw[i]! >= 0x80) {
+      return true;
+    }
+  }
+  return false;
 }
 
 export function detectEolStyle(text: string): EolStyle {

@@ -1,18 +1,20 @@
 import { constants as bufferConstants } from 'node:buffer';
 import type { Context } from '@deepseek-ai/cordis';
 import z from '@deepseek-ai/schemastery';
-import { compileEncodingOverrides } from './encoding/index.js';
+import type { EncodingResolver } from './encoding/index.js';
 import {
   EncodingAdaptiveLocalFileSystem,
   EncodingAdaptiveSandboxedFileSystem,
 } from './fs/index.js';
 import { registerReadEncodingNotice } from './read-notice.js';
 import { inspectFileEncodingForSearch, registerGrepHook } from './search/index.js';
+import { FsEncodingService } from './service.js';
 
 export * from './encoding/index.js';
 export * from './fs/index.js';
 export * from './search/index.js';
 export * from './read-notice.js';
+export * from './service.js';
 export * from './upstream/atomic-write.js';
 export * from './upstream/sandbox-fence.js';
 
@@ -32,8 +34,13 @@ export interface Config {
   diffBasisMaxBytes?: number;
   /** Enforce sandboxPolicy confinement (`EncodingAdaptiveSandboxedFileSystem`). Defaults to `true`. */
   sandbox?: boolean;
-  /** Glob-to-encoding overrides (e.g. `{"*.csv": "gbk"}`). */
+  /**
+   * Glob-to-encoding overrides (e.g. `{"*.csv": "gbk", "README.csv": "utf8"}`).
+   * Later declarations take precedence over earlier ones.
+   */
   encodings?: Record<string, string>;
+  /** Custom encoding resolver callback (`callback > config.encodings > auto-detection`). */
+  resolveEncoding?: EncodingResolver;
 }
 
 export const Config: z<Config> = z.object({
@@ -41,13 +48,20 @@ export const Config: z<Config> = z.object({
   diffBasisMaxBytes: z.natural().min(1).max(MAX_DIFF_BASIS_BYTES).default(DEFAULT_DIFF_BASIS_BYTES),
   sandbox: z.boolean().default(true),
   encodings: z.dict(z.string()).default({}),
+  resolveEncoding: z.function() as unknown as z<EncodingResolver>,
 });
 
 export function apply(ctx: Context, config: Config): void {
   const diffBasisMaxBytes = config.diffBasisMaxBytes ?? DEFAULT_DIFF_BASIS_BYTES;
   const sandboxEnabled = config.sandbox ?? true;
-  const compiledOverrides = compileEncodingOverrides(config.encodings);
   let activeFs: EncodingAdaptiveLocalFileSystem | undefined;
+
+  const fsConfig = {
+    ...(config.cwd !== undefined ? { cwd: config.cwd } : {}),
+    diffBasisMaxBytes,
+    ...(config.encodings !== undefined ? { encodings: config.encodings } : {}),
+    ...(config.resolveEncoding !== undefined ? { resolveEncoding: config.resolveEncoding } : {}),
+  };
 
   if (sandboxEnabled) {
     let waitTimer: ReturnType<typeof setTimeout> | undefined;
@@ -77,28 +91,28 @@ export function apply(ctx: Context, config: Config): void {
 
     ctx.inject(['sandboxPolicy'], (innerCtx) => {
       clearWaitTimer();
-      activeFs = new EncodingAdaptiveSandboxedFileSystem(innerCtx, {
-        ...(config.cwd !== undefined ? { cwd: config.cwd } : {}),
-        diffBasisMaxBytes,
-        ...(config.encodings ? { encodings: config.encodings } : {}),
+      const fsInstance = new EncodingAdaptiveSandboxedFileSystem(innerCtx, fsConfig);
+      activeFs = fsInstance;
+      new FsEncodingService(innerCtx, () => activeFs);
+      innerCtx.effect(() => () => {
+        if (activeFs === fsInstance) {
+          activeFs = undefined;
+        }
       });
     });
   } else {
-    activeFs = new EncodingAdaptiveLocalFileSystem(ctx, {
-      ...(config.cwd !== undefined ? { cwd: config.cwd } : {}),
-      diffBasisMaxBytes,
-      ...(config.encodings ? { encodings: config.encodings } : {}),
+    const fsInstance = new EncodingAdaptiveLocalFileSystem(ctx, fsConfig);
+    activeFs = fsInstance;
+    new FsEncodingService(ctx, () => activeFs);
+    ctx.effect(() => () => {
+      if (activeFs === fsInstance) {
+        activeFs = undefined;
+      }
     });
   }
 
   registerGrepHook(ctx, (realPath, displayPath, signal) =>
-    inspectFileEncodingForSearch(
-      realPath,
-      displayPath,
-      activeFs ? activeFs.getEncodingOverrides() : compiledOverrides,
-      activeFs ? activeFs.config.cwd : (config.cwd ?? process.cwd()),
-      signal,
-    ),
+    inspectFileEncodingForSearch(realPath, displayPath, signal),
   );
 
   registerReadEncodingNotice(ctx, () => activeFs);

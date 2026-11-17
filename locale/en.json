@@ -1,11 +1,14 @@
 {
-  "description": "Encoding-adaptive FileSystem backend: native UTF-8 / UTF-8 BOM passthrough with byte-exact edits for 16 legacy encodings (GBK, GB18030, Big5, Shift-JIS, EUC-KR, UTF-16, Windows-1250~1257, ISO-8859-1) and encoding-aware grep.",
+  "description": "Encoding-adaptive FileSystem backend and ctx.fsEncoding service: protects existing UTF-8 / UTF-8 BOM files while supporting explicit createText, callback > config > detection resolution, byte-exact edits for 16 legacy encodings, and encoding-aware grep.",
   "config": {
     "sandbox": {
       "description": "Confine mutations with sandboxPolicy (SandboxedFileSystem). Disable only when no sandbox policy is used."
     },
     "encodings": {
-      "description": "Glob-to-encoding overrides for non-UTF-8 files (e.g. {\"*.csv\": \"gbk\", \"legacy/**\": \"shift_jis\"})."
+      "description": "Glob-to-encoding overrides (later rules win, supporting 'utf8' exemptions after broader rules, e.g. {\"*.csv\": \"gbk\", \"legacy/**\": \"shift_jis\", \"legacy/README.txt\": \"utf8\"})."
+    },
+    "resolveEncoding": {
+      "description": "Optional custom encoding resolver callback (takes precedence over config.encodings and auto-detection)."
     }
   }
 }

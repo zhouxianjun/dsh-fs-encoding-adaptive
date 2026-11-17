@@ -36,7 +36,7 @@ describe('Encoding-aware grep interception (tools/execute)', () => {
 
   async function setupSearchHarness(
     workspace: string,
-    opts: { withSpill?: boolean; sessionCwd?: string; encodings?: Record<string, string> } = {},
+    opts: { withSpill?: boolean; sessionCwd?: string } = {},
   ) {
     const withSpill = opts.withSpill ?? false;
     const sessionCwd = opts.sessionCwd ?? workspace;
@@ -65,7 +65,6 @@ describe('Encoding-aware grep interception (tools/execute)', () => {
       .plugin(encodingPlugin, {
         sandbox: false,
         cwd: workspace,
-        ...(opts.encodings ? { encodings: opts.encodings } : {}),
       })
       .await();
 
@@ -279,13 +278,7 @@ describe('Encoding-aware grep interception (tools/execute)', () => {
 
     const ac = new AbortController();
     expect(
-      await inspectFileEncodingForSearch(
-        splitUtf8Path,
-        'large-split.utf8.txt',
-        [],
-        workspace,
-        ac.signal,
-      ),
+      await inspectFileEncodingForSearch(splitUtf8Path, 'large-split.utf8.txt', ac.signal),
     ).toEqual({
       kind: 'utf8',
     });
@@ -294,13 +287,7 @@ describe('Encoding-aware grep interception (tools/execute)', () => {
     const abortedAc = new AbortController();
     abortedAc.abort();
     await expect(
-      inspectFileEncodingForSearch(
-        splitUtf8Path,
-        'large-split.utf8.txt',
-        [],
-        workspace,
-        abortedAc.signal,
-      ),
+      inspectFileEncodingForSearch(splitUtf8Path, 'large-split.utf8.txt', abortedAc.signal),
     ).rejects.toMatchObject({ code: 'FS_ABORTED' });
 
     // Large binary file > 64KB (trailing needle must not match in grep either)
@@ -311,7 +298,7 @@ describe('Encoding-aware grep interception (tools/execute)', () => {
     ]);
     const bigBinPath = path.join(workspace, 'large.bin');
     await fs.promises.writeFile(bigBinPath, bigBin);
-    expect(await inspectFileEncodingForSearch(bigBinPath, 'large.bin', [], workspace)).toEqual({
+    expect(await inspectFileEncodingForSearch(bigBinPath, 'large.bin')).toEqual({
       kind: 'binary',
     });
 
@@ -353,20 +340,19 @@ describe('Encoding-aware grep interception (tools/execute)', () => {
     expect(matchesBatch.map((m) => path.basename(m.path))).toEqual(['f-129.txt']);
   });
 
-  it('matches plugin-cwd encoding rules when session workingDirectory is a subdirectory and keeps official display paths', async () => {
+  it('keeps official display paths when session workingDirectory is a subdirectory', async () => {
     const workspace = await makeTempDir();
     const legacyNested = path.join(workspace, 'legacy', 'nested');
     await fs.promises.mkdir(legacyNested, { recursive: true });
-    const gbkFile = path.join(legacyNested, 'short.txt');
-    // Short GBK text that chardet alone misclassifies as ISO-8859-1, so the legacy/** override is required.
-    await fs.promises.writeFile(gbkFile, iconv.encode('FIND_中文\n', 'gbk'));
+    const gbkFile = path.join(legacyNested, 'sample.txt');
+    const gbkLine = '这是一段用于测试子目录相对路径显示的 GBK 中文搜索行：FIND_中文';
+    await fs.promises.writeFile(gbkFile, iconv.encode(`${gbkLine}\n`, 'gbk'));
 
     const controller = new AbortController();
     const agent = { session: { header: { id: 'test-session-cwd' } } };
 
     const rootHarness = await setupSearchHarness(workspace, {
       sessionCwd: workspace,
-      encodings: { 'legacy/**': 'gbk' },
     });
     const rootRes = await runGrep(
       rootHarness.tools,
@@ -378,15 +364,14 @@ describe('Encoding-aware grep interception (tools/execute)', () => {
     expect(rootRes.isError).toBe(false);
     expect((rootRes.value as unknown as { matches: GrepMatch[] }).matches).toEqual([
       {
-        path: path.join('legacy', 'nested', 'short.txt'),
+        path: path.join('legacy', 'nested', 'sample.txt'),
         lineNumber: 1,
-        line: 'FIND_中文',
+        line: gbkLine,
       },
     ]);
 
     const subHarness = await setupSearchHarness(workspace, {
       sessionCwd: path.join(workspace, 'legacy'),
-      encodings: { 'legacy/**': 'gbk' },
     });
     const subRes = await runGrep(
       subHarness.tools,
@@ -398,15 +383,14 @@ describe('Encoding-aware grep interception (tools/execute)', () => {
     expect(subRes.isError).toBe(false);
     expect((subRes.value as unknown as { matches: GrepMatch[] }).matches).toEqual([
       {
-        path: path.join('nested', 'short.txt'),
+        path: path.join('nested', 'sample.txt'),
         lineNumber: 1,
-        line: 'FIND_中文',
+        line: gbkLine,
       },
     ]);
 
     const leafHarness = await setupSearchHarness(workspace, {
       sessionCwd: legacyNested,
-      encodings: { 'legacy/**': 'gbk' },
     });
     const leafRes = await runGrep(
       leafHarness.tools,
@@ -418,9 +402,9 @@ describe('Encoding-aware grep interception (tools/execute)', () => {
     expect(leafRes.isError).toBe(false);
     expect((leafRes.value as unknown as { matches: GrepMatch[] }).matches).toEqual([
       {
-        path: 'short.txt',
+        path: 'sample.txt',
         lineNumber: 1,
-        line: 'FIND_中文',
+        line: gbkLine,
       },
     ]);
   });

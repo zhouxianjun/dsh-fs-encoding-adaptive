@@ -5,6 +5,8 @@ import {
   decodeBytesRaw,
   detectEolStyle,
   encodeTextRaw,
+  hasNonAsciiByte,
+  hasUtf8Bom,
   normalizeEncodingName,
   normalizeEol,
   normalizeLineEndings,
@@ -19,11 +21,19 @@ const CHARDET_SAMPLE_BYTES = 65536;
 const CONFIDENCE_THRESHOLD = 45;
 const utf8FatalDecoder = new TextDecoder('utf-8', { fatal: true });
 
+export type NonUtf8DetectionSource = 'callback' | 'override' | 'bom' | 'chardet' | 'explicit';
+
+export interface NonUtf8Preference {
+  readonly encoding: NonUtf8Encoding;
+  readonly source: NonUtf8DetectionSource;
+  readonly confident?: boolean;
+}
+
 export interface EncodingDetection {
   readonly encoding: NonUtf8Encoding;
   readonly hasBom: boolean;
   readonly confident: boolean;
-  readonly source: 'override' | 'bom' | 'chardet';
+  readonly source: NonUtf8DetectionSource;
 }
 
 export interface DecodedText {
@@ -33,7 +43,7 @@ export interface DecodedText {
   readonly encoding: NonUtf8Encoding;
   readonly hasBom: boolean;
   readonly confident: boolean;
-  readonly source: 'override' | 'bom' | 'chardet';
+  readonly source: NonUtf8DetectionSource;
 }
 
 /**
@@ -105,6 +115,22 @@ export function isValidUtf8Text(raw: Buffer): boolean {
   } catch {
     return false;
   }
+}
+
+/**
+ * Returns true if the buffer is a protected UTF-8 text file: either starts with
+ * a UTF-8 BOM (`EF BB BF`) or contains non-ASCII bytes that decode cleanly as UTF-8.
+ * Pure ASCII buffers without a UTF-8 BOM return false so configured/cached encodings
+ * can apply when allowed.
+ */
+export function isProtectedUtf8Bytes(raw: Buffer): boolean {
+  if (raw.subarray(0, BINARY_SAMPLE_BYTES).includes(0)) {
+    return false;
+  }
+  if (hasUtf8Bom(raw)) {
+    return true;
+  }
+  return hasNonAsciiByte(raw) && isValidUtf8Text(raw);
 }
 
 function hasC1ControlBytes(text: string): boolean {
@@ -191,13 +217,34 @@ function detectBomlessAsciiUtf16(raw: Buffer): 'utf16le' | 'utf16be' | undefined
   return undefined;
 }
 
-/**
- * Detects a non-UTF-8 encoding among the 16 supported encodings. Throws `FS_NOT_TEXT`
- * for genuine binary files, UTF-32, or unreadable bytes.
- */
-export function detectNonUtf8Encoding(
+function validatePreferredNonUtf8(
   raw: Buffer,
   filePath: string,
+  encoding: NonUtf8Encoding,
+  source: NonUtf8DetectionSource,
+  confident: boolean,
+): EncodingDetection {
+  const hasLeBom = raw.length >= 2 && raw[0] === 0xff && raw[1] === 0xfe;
+  const hasBeBom = raw.length >= 2 && raw[0] === 0xfe && raw[1] === 0xff;
+  const hasBom = (encoding === 'utf16le' && hasLeBom) || (encoding === 'utf16be' && hasBeBom);
+  if (!roundTripsCleanly(raw, encoding, hasBom)) {
+    throw new FsError(
+      `Configured encoding '${encoding}' cannot losslessly decode: ${filePath}`,
+      'FS_NOT_TEXT',
+    );
+  }
+  return { encoding, hasBom, confident, source };
+}
+
+/**
+ * Detects a non-UTF-8 encoding among the 16 supported encodings, honoring an
+ * explicit preference when supplied. Throws `FS_NOT_TEXT` for genuine binary
+ * files, UTF-32, or unreadable bytes.
+ */
+export function detectNonUtf8EncodingWithPreference(
+  raw: Buffer,
+  filePath: string,
+  preference?: NonUtf8Preference,
   overrides: readonly CompiledEncodingOverride[] = [],
   cwd?: string,
 ): EncodingDetection {
@@ -205,19 +252,29 @@ export function detectNonUtf8Encoding(
     throw new FsError(`Unsupported UTF-32 encoding or binary file: ${filePath}`, 'FS_NOT_TEXT');
   }
 
-  const override = matchEncodingOverride(filePath, overrides, cwd);
+  if (preference) {
+    return validatePreferredNonUtf8(
+      raw,
+      filePath,
+      preference.encoding,
+      preference.source,
+      preference.confident ?? true,
+    );
+  }
+
   const hasLeBom = raw.length >= 2 && raw[0] === 0xff && raw[1] === 0xfe;
   const hasBeBom = raw.length >= 2 && raw[0] === 0xfe && raw[1] === 0xff;
+  const override = matchEncodingOverride(filePath, overrides, cwd);
+
+  if (override === 'utf8') {
+    throw new FsError(
+      `Configured encoding 'utf8' cannot decode non-UTF-8 file: ${filePath}`,
+      'FS_NOT_TEXT',
+    );
+  }
 
   if (override) {
-    const hasBom = (override === 'utf16le' && hasLeBom) || (override === 'utf16be' && hasBeBom);
-    if (!roundTripsCleanly(raw, override, hasBom)) {
-      throw new FsError(
-        `Configured encoding '${override}' cannot losslessly decode: ${filePath}`,
-        'FS_NOT_TEXT',
-      );
-    }
-    return { encoding: override, hasBom, confident: true, source: 'override' };
+    return validatePreferredNonUtf8(raw, filePath, override, 'override', true);
   }
 
   if (hasLeBom) {
@@ -314,13 +371,23 @@ export function detectNonUtf8Encoding(
   throw new FsError(`Unable to decode file as supported text encoding: ${filePath}`, 'FS_NOT_TEXT');
 }
 
-export function decodeAndValidateNonUtf8(
+export function detectNonUtf8Encoding(
   raw: Buffer,
   filePath: string,
   overrides: readonly CompiledEncodingOverride[] = [],
   cwd?: string,
+): EncodingDetection {
+  return detectNonUtf8EncodingWithPreference(raw, filePath, undefined, overrides, cwd);
+}
+
+export function decodeAndValidateNonUtf8WithPreference(
+  raw: Buffer,
+  filePath: string,
+  preference?: NonUtf8Preference,
+  overrides: readonly CompiledEncodingOverride[] = [],
+  cwd?: string,
 ): DecodedText {
-  const det = detectNonUtf8Encoding(raw, filePath, overrides, cwd);
+  const det = detectNonUtf8EncodingWithPreference(raw, filePath, preference, overrides, cwd);
   const text = decodeBytesRaw(raw, det.encoding, det.hasBom);
   const eol = detectEolStyle(text);
   const lfText = eol === 'cr' ? normalizeEol(text) : normalizeLineEndings(text);
@@ -333,6 +400,15 @@ export function decodeAndValidateNonUtf8(
     confident: det.confident,
     source: det.source,
   };
+}
+
+export function decodeAndValidateNonUtf8(
+  raw: Buffer,
+  filePath: string,
+  overrides: readonly CompiledEncodingOverride[] = [],
+  cwd?: string,
+): DecodedText {
+  return decodeAndValidateNonUtf8WithPreference(raw, filePath, undefined, overrides, cwd);
 }
 
 /**

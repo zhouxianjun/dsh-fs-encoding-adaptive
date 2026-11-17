@@ -24,6 +24,14 @@ Use Node.js matching `package.json` engines and pnpm >=12.3.4.
 
 ## Design & Framework Boundaries
 
+The project's standing goal is to preserve official DSH filesystem behavior and extend non-UTF-8 reading, writing, and search. Outside these encoding extensions, delegate to official public APIs (`super.*`) or inherit their behavior; do not replace official logic with parallel implementations.
+
+- Without a user-selected encoding, preserve native behavior and add support for non-UTF-8 text.
+- Encoding selected through configuration, a resolver callback, or `createText` is an intentional user choice. Honor it within the supported extension boundaries, including existing pure ASCII files; do not treat this as an accidental change to native defaults.
+- Existing non-ASCII valid UTF-8 and UTF-8 BOM files remain on the native UTF-8 path, protected from broad encoding rules.
+- Preserve official sandbox confinement, version guards, atomic publication, error contracts, platform handling, and lifecycle behavior on extension paths. Keep only the synchronized helpers necessary to support those paths.
+- Search intentionally uses automatic encoding detection independently of filesystem rules, callbacks, and caches. Preserve official search behavior outside the non-UTF-8 enhancement.
+
 Trace responsibilities and callers before editing; fix root causes, synchronize affected contracts and documentation, and avoid speculative abstractions or compatibility layers. Preserve unrelated changes. Do not bump versions without a release request.
 
 Read-only inspection of upstream documentation, source, types, tests, and Git history is allowed. Do not modify the upstream checkout or couple this package to its internal filesystem paths. Prefer public APIs/types and existing dependencies.

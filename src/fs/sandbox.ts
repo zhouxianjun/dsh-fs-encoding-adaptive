@@ -14,7 +14,7 @@ import type { PatchHunk } from '@deepseek-ai/dsh-fs-patch';
 import type { SandboxExecutionPolicy, SandboxMode } from '@deepseek-ai/dsh-sandbox';
 import { checkedTarget } from '../upstream/sandbox-fence.js';
 import { EncodingAdaptiveLocalFileSystem } from './local.js';
-import type { EncodingAdaptiveConfig } from './local.js';
+import type { CreateTextOptions, EncodingAdaptiveConfig } from './local.js';
 
 interface SandboxPolicyServiceLike {
   readonly defaultMode: SandboxMode;
@@ -53,6 +53,20 @@ export class EncodingAdaptiveSandboxedFileSystem extends EncodingAdaptiveLocalFi
     const policy = (this.ctx as Context & { sandboxPolicy: SandboxPolicyServiceLike })
       .sandboxPolicy;
     return policy.resolve();
+  }
+
+  override async createText(
+    target: FsTarget,
+    content: string,
+    options: CreateTextOptions,
+  ): Promise<FsWriteOutcome> {
+    const fresh = await checkedTarget(
+      this,
+      target,
+      () => this.resolveDefaultPolicy(),
+      options?.sandboxPolicy,
+    );
+    return await super.createText(fresh, content, options);
   }
 
   override async writeText(
