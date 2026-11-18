@@ -2,7 +2,7 @@
   "description": "Encoding-adaptive FileSystem backend and ctx.fsEncoding service: protects existing UTF-8 / UTF-8 BOM files while supporting explicit createText, callback > config > detection resolution, byte-exact edits for 16 legacy encodings, and encoding-aware grep.",
   "config": {
     "sandbox": {
-      "description": "Confine mutations with sandboxPolicy (SandboxedFileSystem). Disable only when no sandbox policy is used."
+      "description": "Confine file mutations with sandboxPolicy (SandboxedFileSystem). Set to false to bypass sandbox mutation checks (EncodingAdaptiveLocalFileSystem)."
     },
     "encodings": {
       "description": "Glob-to-encoding overrides (later rules win, supporting 'utf8' exemptions after broader rules, e.g. {\"*.csv\": \"gbk\", \"legacy/**\": \"shift_jis\", \"legacy/README.txt\": \"utf8\"})."

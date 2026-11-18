@@ -1,5 +1,7 @@
 # dsh-fs-encoding-adaptive
 
+**English** | [简体中文](./README.zh.md)
+
 Encoding-adaptive `FileSystem` provider, `ctx.fsEncoding` service, and `grep` enhancement plugin for DeepSeek Harness (`dsh`).
 
 ## Design Principles
@@ -54,7 +56,7 @@ Mounted synchronously with the active `FileSystem` service:
 
 ## Configuration
 
-- `sandbox` (`boolean`, default `true`): Uses `EncodingAdaptiveSandboxedFileSystem` (`sandboxPolicy` injected) when enabled, or `EncodingAdaptiveLocalFileSystem` when `false`.
+- `sandbox` (`boolean`, default `true`): Enforce `sandboxPolicy` confinement (`EncodingAdaptiveSandboxedFileSystem`) when enabled, or bypass sandbox mutation checks (`EncodingAdaptiveLocalFileSystem`) when `false` (the host still provides `sandboxPolicy`).
 - `encodings` (`Record<string, string>`, default `{}`): Glob-to-encoding overrides (e.g. `{ "*.csv": "gbk", "legacy/**": "shift_jis", "legacy/README.txt": "utf8" }`). Later declarations override earlier ones, so `'utf8'` exemptions must be placed after broader patterns. Invalid encoding names log a warning and are skipped.
 - `resolveEncoding` (`EncodingResolver`, optional): Custom sync/async callback `(context) => 'utf8' | NonUtf8Encoding | undefined`.
 - `cwd` (`string`, optional): Base directory for relative paths.
@@ -62,4 +64,4 @@ Mounted synchronously with the active `FileSystem` service:
 
 ## Sandbox Compatibility Note
 
-`EncodingAdaptiveSandboxedFileSystem extends EncodingAdaptiveLocalFileSystem` and enforces per-call `sandboxPolicy` confinement (`checkedTarget`, synced cleanly from `@deepseek-ai/dsh-fs-sandbox` into `src/upstream/sandbox-fence.ts`) on `createText` and all five mutating `FileSystem` operations before calling `super.*`. If `sandboxPolicy` is not mounted within 5 seconds, the plugin logs a warning.
+The plugin declares `sandboxPolicy` as a required Cordis dependency (`inject: ['sandboxPolicy']`). When `sandbox: true` (default), `EncodingAdaptiveSandboxedFileSystem extends EncodingAdaptiveLocalFileSystem` and enforces per-call `sandboxPolicy` confinement (`checkedTarget`, synced cleanly from `@deepseek-ai/dsh-fs-sandbox` into `src/upstream/sandbox-fence.ts`) on `createText` and all five mutating `FileSystem` operations before calling `super.*`. When `sandbox: false`, `EncodingAdaptiveLocalFileSystem` is instantiated directly without mutation confinement checks.

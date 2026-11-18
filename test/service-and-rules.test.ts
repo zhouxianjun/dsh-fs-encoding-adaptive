@@ -217,6 +217,7 @@ describe('FsEncodingService, resolver callbacks, unified cache, and proactive AS
       return undefined;
     });
 
+    registerFakeSandboxPolicy(ctx, 'workspace-write', dir);
     await ctx
       .plugin(encodingPlugin, {
         cwd: dir,
@@ -350,6 +351,7 @@ describe('FsEncodingService, resolver callbacks, unified cache, and proactive AS
     ctx.plugin(ToolsService, {});
     ctx.plugin(nativeExecutor);
     ctx.plugin(SystemPrompt, {});
+    registerFakeSandboxPolicy(ctx, 'workspace-write', dir);
     await ctx
       .plugin(encodingPlugin, {
         cwd: dir,
@@ -493,6 +495,7 @@ describe('FsEncodingService, resolver callbacks, unified cache, and proactive AS
     ctx.plugin(nativeExecutor);
     ctx.plugin(SystemPrompt, {});
     ctx.plugin(LocalSubprocessRuntime);
+    registerFakeSandboxPolicy(ctx, 'workspace-write', workspace);
     await ctx
       .plugin(encodingPlugin, {
         sandbox: false,

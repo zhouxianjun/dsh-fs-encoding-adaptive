@@ -1,7 +1,7 @@
 import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
-import { Context } from '@deepseek-ai/cordis';
+import { Context, Service } from '@deepseek-ai/cordis';
 import { FsVersion } from '@deepseek-ai/dsh-fs';
 import type { FsInfo, FsTarget } from '@deepseek-ai/dsh-fs';
 import { LocalFileSystem } from '@deepseek-ai/dsh-fs-local';
@@ -377,6 +377,17 @@ describe('EncodingAdaptiveLocalFileSystem', () => {
     const ctx = new Context();
     ctxs.push(ctx);
 
+    class MockSandboxPolicy extends Service {
+      readonly defaultMode = 'workspace-write';
+      constructor(c: Context) {
+        super(c, 'sandboxPolicy');
+      }
+      resolve() {
+        return { mode: 'workspace-write' as const, workspaceRoot: dir };
+      }
+    }
+
+    ctx.plugin(MockSandboxPolicy);
     ctx.plugin(SystemPrompt, {});
     ctx.plugin(ToolsService, {});
     ctx.plugin(nativeExecutor);

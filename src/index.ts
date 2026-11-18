@@ -19,13 +19,13 @@ export * from './upstream/atomic-write.js';
 export * from './upstream/sandbox-fence.js';
 
 export const name = 'fs-encoding-adaptive';
+export const inject = ['sandboxPolicy'];
 
 const MAX_DIFF_BASIS_BYTES = Math.min(
   bufferConstants.MAX_LENGTH,
   bufferConstants.MAX_STRING_LENGTH,
 );
 const DEFAULT_DIFF_BASIS_BYTES = 10 * 1024 * 1024;
-const SANDBOX_WAIT_WARN_MS = 5000;
 
 export interface Config {
   /** Base directory for relative paths. Defaults to `process.cwd()`. */
@@ -63,51 +63,17 @@ export function apply(ctx: Context, config: Config): void {
     ...(config.resolveEncoding !== undefined ? { resolveEncoding: config.resolveEncoding } : {}),
   };
 
-  if (sandboxEnabled) {
-    let waitTimer: ReturnType<typeof setTimeout> | undefined;
-    const clearWaitTimer = () => {
-      if (waitTimer !== undefined) {
-        clearTimeout(waitTimer);
-        waitTimer = undefined;
-      }
-    };
+  const fsInstance = sandboxEnabled
+    ? new EncodingAdaptiveSandboxedFileSystem(ctx, fsConfig)
+    : new EncodingAdaptiveLocalFileSystem(ctx, fsConfig);
 
-    const hasSandboxPolicy = Boolean(ctx.get('sandboxPolicy'));
-    if (!hasSandboxPolicy) {
-      waitTimer = setTimeout(() => {
-        waitTimer = undefined;
-        ctx
-          .logger(name)
-          .warn(
-            'Still waiting for sandboxPolicy service after 5s; ensure @deepseek-ai/dsh-sandbox-policy is enabled or set sandbox: false.',
-          );
-      }, SANDBOX_WAIT_WARN_MS);
-      waitTimer.unref?.();
+  activeFs = fsInstance;
+  new FsEncodingService(ctx, () => activeFs);
+  ctx.effect(() => () => {
+    if (activeFs === fsInstance) {
+      activeFs = undefined;
     }
-
-    ctx.effect(() => clearWaitTimer);
-
-    ctx.inject(['sandboxPolicy'], (innerCtx) => {
-      clearWaitTimer();
-      const fsInstance = new EncodingAdaptiveSandboxedFileSystem(innerCtx, fsConfig);
-      activeFs = fsInstance;
-      new FsEncodingService(innerCtx, () => activeFs);
-      innerCtx.effect(() => () => {
-        if (activeFs === fsInstance) {
-          activeFs = undefined;
-        }
-      });
-    });
-  } else {
-    const fsInstance = new EncodingAdaptiveLocalFileSystem(ctx, fsConfig);
-    activeFs = fsInstance;
-    new FsEncodingService(ctx, () => activeFs);
-    ctx.effect(() => () => {
-      if (activeFs === fsInstance) {
-        activeFs = undefined;
-      }
-    });
-  }
+  });
 
   registerGrepHook(ctx, (realPath, displayPath, signal) =>
     inspectFileEncodingForSearch(realPath, displayPath, signal),

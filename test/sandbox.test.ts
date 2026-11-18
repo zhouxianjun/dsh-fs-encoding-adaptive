@@ -5,7 +5,7 @@ import { Context, Service } from '@deepseek-ai/cordis';
 import type {} from '@deepseek-ai/dsh-fs';
 import type { SandboxExecutionPolicy, SandboxMode } from '@deepseek-ai/dsh-sandbox';
 import iconv from 'iconv-lite';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it } from 'vitest';
 import { EncodingAdaptiveSandboxedFileSystem } from '../src/fs/index.js';
 import * as encodingPlugin from '../src/index.js';
 
@@ -19,7 +19,7 @@ describe('EncodingAdaptiveSandboxedFileSystem & sandbox policy integration', () 
     return dir;
   }
 
-  function registerFakeSandboxPolicy(ctx: Context, mode: SandboxMode, workspaceRoot: string): void {
+  function registerFakeSandboxPolicy(ctx: Context, mode: SandboxMode, workspaceRoot: string) {
     class MockSandboxPolicy extends Service {
       readonly defaultMode = mode;
       readonly workspaceRoot = workspaceRoot;
@@ -34,11 +34,10 @@ describe('EncodingAdaptiveSandboxedFileSystem & sandbox policy integration', () 
         };
       }
     }
-    ctx.plugin(MockSandboxPolicy);
+    return ctx.plugin(MockSandboxPolicy);
   }
 
   afterEach(async () => {
-    vi.useRealTimers();
     await Promise.all(ctxs.splice(0).map((c) => c.fiber.dispose()));
     await Promise.all(
       dirs.splice(0).map((d) => fs.promises.rm(d, { recursive: true, force: true })),
@@ -236,42 +235,18 @@ describe('EncodingAdaptiveSandboxedFileSystem & sandbox policy integration', () 
     ).toBe(true);
   });
 
-  it('logs a warning if sandboxPolicy does not appear within 5 seconds, and cancels cleanly on dispose', async () => {
-    vi.useFakeTimers();
+  it('stays inactive until sandboxPolicy is provided, then activates cleanly', async () => {
     const workspace = await makeTempDir();
-
-    const attachWarnSpy = (c: Context) => {
-      const warnSpy = vi.fn();
-      const origLogger = c.logger.bind(c);
-      (c as unknown as { logger: typeof c.logger }).logger = ((loggerName: string) => {
-        const l = origLogger(loggerName);
-        l.warn = warnSpy as never;
-        return l;
-      }) as typeof c.logger;
-      return warnSpy;
-    };
-
     const ctx = new Context();
     ctxs.push(ctx);
-    const warnSpy = attachWarnSpy(ctx);
-    ctx.plugin(encodingPlugin, { cwd: workspace, sandbox: true });
 
-    await vi.advanceTimersByTimeAsync(4999);
-    expect(warnSpy).not.toHaveBeenCalled();
+    const fork = ctx.plugin(encodingPlugin, { cwd: workspace, sandbox: true });
+    expect(ctx.get('fs')).toBeUndefined();
 
-    await vi.advanceTimersByTimeAsync(2);
-    expect(warnSpy).toHaveBeenCalledTimes(1);
-    expect(String(warnSpy.mock.calls[0]?.[0] ?? '')).toContain('sandboxPolicy');
-
-    // Disposing before the 5-second timeout cancels the warning timer
-    const ctxDisposed = new Context();
-    ctxs.push(ctxDisposed);
-    const disposedWarnSpy = attachWarnSpy(ctxDisposed);
-    ctxDisposed.plugin(encodingPlugin, { cwd: workspace, sandbox: true });
-
-    await vi.advanceTimersByTimeAsync(2000);
-    await ctxDisposed.fiber.dispose();
-    await vi.advanceTimersByTimeAsync(5000);
-    expect(disposedWarnSpy).not.toHaveBeenCalled();
+    const policyFork = registerFakeSandboxPolicy(ctx, 'workspace-write', workspace);
+    await policyFork.await();
+    await fork.await();
+    expect(ctx.get('fs')).toBeDefined();
+    expect(ctx.fs).toBeInstanceOf(EncodingAdaptiveSandboxedFileSystem);
   });
 });

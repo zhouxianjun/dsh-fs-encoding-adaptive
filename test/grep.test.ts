@@ -53,15 +53,27 @@ describe('Encoding-aware grep interception (tools/execute)', () => {
       }
     }
 
+    class MockSandboxPolicy extends Service {
+      readonly defaultMode = 'workspace-write';
+      constructor(c: Context) {
+        super(c, 'sandboxPolicy');
+      }
+      resolve() {
+        return { mode: 'workspace-write' as const, workspaceRoot: workspace };
+      }
+    }
+
     ctx.plugin(MockWorkingDirectory);
+    ctx.plugin(MockSandboxPolicy);
     ctx.plugin(ToolsService, {});
-    ctx.plugin(nativeExecutor);
+    const executorFork = ctx.plugin(nativeExecutor);
     ctx.plugin(SystemPrompt, {});
     ctx.plugin(LocalSubprocessRuntime);
     if (withSpill) {
       const spillDir = await makeTempDir('dsh-enc-spill-');
       ctx.plugin(LocalSpillStore, { root: spillDir, cleanupPeriodDays: 0 });
     }
+    await executorFork.await();
     await ctx
       .plugin(encodingPlugin, {
         sandbox: false,

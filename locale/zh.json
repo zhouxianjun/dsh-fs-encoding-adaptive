@@ -2,7 +2,7 @@
   "description": "自适应多编码文件系统后端与 ctx.fsEncoding 服务：在保护存量 UTF-8（含 UTF-8 BOM）文件的前提下，支持显式 createText 新建、回调 > 配置 > 检测优先级解析、16 种传统非 UTF-8 编码无损读写编辑与 grep 检索。",
   "config": {
     "sandbox": {
-      "description": "使用 sandboxPolicy（SandboxedFileSystem）约束写入权限。仅在无沙箱策略的环境中关闭。"
+      "description": "使用 sandboxPolicy（SandboxedFileSystem）约束文件写入权限。设为 false 时不强制文件系统写入沙箱检查（纯本地模式）。"
     },
     "encodings": {
       "description": "按路径 glob 覆盖编码的映射规则（后声明优先，支持在宽规则后配置 'utf8' 豁免，例如 {\"*.csv\": \"gbk\", \"legacy/**\": \"shift_jis\", \"legacy/README.txt\": \"utf8\"}）。"
