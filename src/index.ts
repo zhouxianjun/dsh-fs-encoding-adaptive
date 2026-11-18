@@ -26,6 +26,71 @@ const MAX_DIFF_BASIS_BYTES = Math.min(
   bufferConstants.MAX_STRING_LENGTH,
 );
 const DEFAULT_DIFF_BASIS_BYTES = 10 * 1024 * 1024;
+const FS_RELEASE_TIMEOUT_MS = 5000;
+
+function shouldStopWaitingForFs(ctx: Context): boolean {
+  return (
+    ctx.fiber.uid === null ||
+    ctx.get('fs', false) === undefined ||
+    ctx.get('sandboxPolicy') === undefined
+  );
+}
+
+/**
+ * During live profile recomposition, Cordis disables `fs-sandbox` and activates
+ * `fs-encoding-adaptive` in the same `entry.update` pass. Because `fs-sandbox`
+ * unloads its `fs` provision asynchronously after its dependents detach, wait
+ * for the retiring `fs` slot to clear (keeping this fiber in `LOADING` so
+ * `loader.await()` waits for us and downstream consumers).
+ */
+async function waitForExistingFsRelease(ctx: Context): Promise<void> {
+  if (shouldStopWaitingForFs(ctx)) {
+    return;
+  }
+
+  await new Promise<void>((resolve) => {
+    let settled = false;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    let stopService: (() => void) | undefined;
+    let stopPlugin: (() => void) | undefined;
+
+    const finish = () => {
+      if (settled) {
+        return;
+      }
+      settled = true;
+      if (timer !== undefined) {
+        clearTimeout(timer);
+        timer = undefined;
+      }
+      stopService?.();
+      stopPlugin?.();
+      resolve();
+    };
+
+    stopService = ctx.on('internal/service', (serviceName) => {
+      if (
+        (serviceName === 'fs' || serviceName === 'sandboxPolicy') &&
+        shouldStopWaitingForFs(ctx)
+      ) {
+        finish();
+      }
+    });
+    stopPlugin = ctx.on('internal/plugin', (fiber) => {
+      if (fiber === ctx.fiber && fiber.uid === null) {
+        finish();
+      }
+    });
+
+    if (shouldStopWaitingForFs(ctx)) {
+      finish();
+      return;
+    }
+
+    timer = setTimeout(finish, FS_RELEASE_TIMEOUT_MS);
+    timer.unref?.();
+  });
+}
 
 export interface Config {
   /** Base directory for relative paths. Defaults to `process.cwd()`. */
@@ -51,34 +116,46 @@ export const Config: z<Config> = z.object({
   resolveEncoding: z.function() as unknown as z<EncodingResolver>,
 });
 
-export function apply(ctx: Context, config: Config): void {
-  const diffBasisMaxBytes = config.diffBasisMaxBytes ?? DEFAULT_DIFF_BASIS_BYTES;
-  const sandboxEnabled = config.sandbox ?? true;
-  let activeFs: EncodingAdaptiveLocalFileSystem | undefined;
+export function apply(ctx: Context, config: Config): void | Promise<void> {
+  const activate = (): void => {
+    if (ctx.fiber.uid === null || ctx.get('sandboxPolicy') === undefined) {
+      return;
+    }
 
-  const fsConfig = {
-    ...(config.cwd !== undefined ? { cwd: config.cwd } : {}),
-    diffBasisMaxBytes,
-    ...(config.encodings !== undefined ? { encodings: config.encodings } : {}),
-    ...(config.resolveEncoding !== undefined ? { resolveEncoding: config.resolveEncoding } : {}),
+    const diffBasisMaxBytes = config.diffBasisMaxBytes ?? DEFAULT_DIFF_BASIS_BYTES;
+    const sandboxEnabled = config.sandbox ?? true;
+    let activeFs: EncodingAdaptiveLocalFileSystem | undefined;
+
+    const fsConfig = {
+      ...(config.cwd !== undefined ? { cwd: config.cwd } : {}),
+      diffBasisMaxBytes,
+      ...(config.encodings !== undefined ? { encodings: config.encodings } : {}),
+      ...(config.resolveEncoding !== undefined ? { resolveEncoding: config.resolveEncoding } : {}),
+    };
+
+    const fsInstance = sandboxEnabled
+      ? new EncodingAdaptiveSandboxedFileSystem(ctx, fsConfig)
+      : new EncodingAdaptiveLocalFileSystem(ctx, fsConfig);
+
+    activeFs = fsInstance;
+    new FsEncodingService(ctx, () => activeFs);
+    ctx.effect(() => () => {
+      if (activeFs === fsInstance) {
+        activeFs = undefined;
+      }
+    });
+
+    registerGrepHook(ctx, (realPath, displayPath, signal) =>
+      inspectFileEncodingForSearch(realPath, displayPath, signal),
+    );
+
+    registerReadEncodingNotice(ctx, () => activeFs);
+    registerEncodingSystemPrompt(ctx);
   };
 
-  const fsInstance = sandboxEnabled
-    ? new EncodingAdaptiveSandboxedFileSystem(ctx, fsConfig)
-    : new EncodingAdaptiveLocalFileSystem(ctx, fsConfig);
+  if (ctx.get('fs', false) !== undefined) {
+    return waitForExistingFsRelease(ctx).then(activate);
+  }
 
-  activeFs = fsInstance;
-  new FsEncodingService(ctx, () => activeFs);
-  ctx.effect(() => () => {
-    if (activeFs === fsInstance) {
-      activeFs = undefined;
-    }
-  });
-
-  registerGrepHook(ctx, (realPath, displayPath, signal) =>
-    inspectFileEncodingForSearch(realPath, displayPath, signal),
-  );
-
-  registerReadEncodingNotice(ctx, () => activeFs);
-  registerEncodingSystemPrompt(ctx);
+  activate();
 }
