@@ -1,6 +1,6 @@
 /**
  * Sandbox path-containment and target-fencing helpers synced from
- * `@deepseek-ai/dsh-fs-sandbox@0.2.2-rc.3` (`src/containment.ts` + `checkedTarget`).
+ * `@deepseek-ai/dsh-fs-sandbox@0.2.2-rc.5` (`src/containment.ts` + `checkedTarget`).
  *
  * Kept verbatim in structure so upstream updates to `@deepseek-ai/dsh-fs-sandbox`
  * can be diffed and merged directly without touching encoding logic.

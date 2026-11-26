@@ -1,6 +1,6 @@
 /**
  * Atomic raw-byte publication and stat-paired byte reads modeled after
- * `@deepseek-ai/dsh-fs-local@0.2.2-rc.3` (`src/fsio.ts`).
+ * `@deepseek-ai/dsh-fs-local@0.2.2-rc.5` (`src/fsio.ts`).
  *
  * Unlike `fsio.ts`, version tokens (`FsVersion`) are never synthesized locally:
  * every `statFn` callback delegates to `FileSystem.stat(target)`, ensuring 100%

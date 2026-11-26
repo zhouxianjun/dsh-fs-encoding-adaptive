@@ -1,6 +1,6 @@
 /**
  * Windows security-descriptor helpers for atomic local-file replacement.
- * Synced from `@deepseek-ai/dsh-fs-local@0.2.2-rc.2` (`src/win32.ts`).
+ * Synced from `@deepseek-ai/dsh-fs-local@0.2.2-rc.5` (`src/win32.ts`).
  * Koffi loads lazily so non-Windows processes never open Win32 libraries.
  */
 
